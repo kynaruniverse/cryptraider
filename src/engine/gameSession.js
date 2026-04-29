@@ -202,12 +202,11 @@ export class GameSession {
   }
 
   _depositCrystal() {
-    // Player must have just walked into machine — auto-deposit
-    // In original game, crystals must be physically carried.
-    // We simplify: collected crystals auto-deposit on machine touch.
-    // But first check if all collected.
-    const remaining = this.grid.count(TILE.CRYSTAL);
-    if (remaining === 0) {
+    // Logic: Every crystal collected by the player is 'carried' 
+    // and deposited here. 
+    this.crystalsDeposited = this.crystalsTotal - this.grid.count(TILE.CRYSTAL);
+    
+    if (this.crystalsDeposited >= this.crystalsTotal) {
       this._openPortal();
     }
   }

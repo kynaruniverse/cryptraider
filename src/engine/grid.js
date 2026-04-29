@@ -193,4 +193,27 @@ export class Grid {
     this.meta = data.meta;
     this.fullClearRequested = true;
   }
+
+  /**
+   * AAA Loader: Converts a LevelData object into a playable grid
+   * @param {Object} level - From levels/levelData.js
+   */
+  loadArray(level) {
+    this.cols = level.width;
+    this.rows = level.height;
+    const size = this.cols * this.rows;
+
+    // Re-initialize buffers to match new level size
+    this.cells = new Uint8Array(size);
+    this.meta = Array.from({ length: size }, () => ({}));
+    
+    // Fill the grid with the level map data
+    for (let i = 0; i < size; i++) {
+      this.cells[i] = level.map[i];
+    }
+    
+    this.fullClearRequested = true;
+    this.dirtyCells.clear();
+  }
 }
+
