@@ -222,21 +222,15 @@ export class Renderer {
 
 
       // 2. Draw Entity
-      // Optimization: Draw static tiles using the map lookup
-      const spriteKey = TILE_MAP[tile];
-      
       switch (tile) {
-        case TILE.DIRT:    
-        case TILE.STONE:   
-        case TILE.GRAVEL:  
-        case TILE.SAND:    
-        case TILE.LADDER:  
-        case TILE.BOULDER: 
-        case TILE.DYNAMITE:
-        case TILE.KEY:     
-          this.drawFromAtlas(spriteKey, x, y, T, this._hudOffset); 
-          break;
-
+        case TILE.DIRT:    this.drawFromAtlas('dirt', x, y, T, this._hudOffset); break;
+        case TILE.STONE:   this.drawFromAtlas('stone', x, y, T, this._hudOffset); break;
+        case TILE.GRAVEL:  this.drawFromAtlas('gravel', x, y, T, this._hudOffset); break;
+        case TILE.SAND:    this.drawFromAtlas('sand', x, y, T, this._hudOffset); break;
+        case TILE.LADDER:  this.drawFromAtlas('ladder', x, y, T, this._hudOffset); break;
+        case TILE.BOULDER: this.drawFromAtlas('boulder', x, y, T, this._hudOffset); break;
+        case TILE.DYNAMITE:this.drawFromAtlas('dynamite', x, y, T, this._hudOffset); break;
+        case TILE.KEY:     this.drawFromAtlas('key', x, y, T, this._hudOffset); break;
         case TILE.DOOR:    
           if (!meta?.open) {
             this.drawFromAtlas('door_closed', x, y, T, this._hudOffset);

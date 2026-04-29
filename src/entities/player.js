@@ -129,13 +129,19 @@ export class Player {
 
   // ── Internal movement helpers ──────────────────────────────
   _move(nx, ny) {
-    // Attach direction metadata for the renderer
-    this.grid.setMeta(this.x, this.y, { dir: this.dir });
-    this.grid.moveEntity(this.x, this.y, nx, ny);
+    // 1. Update the grid: Clear old position, set new position
+    this.grid.set(this.x, this.y, TILE.EMPTY);
     this.x = nx;
     this.y = ny;
+    this.grid.set(this.x, this.y, TILE.PLAYER);
+
+    // 2. Emit event for camera/sounds
     this.events.emit('player_moved', { x: nx, y: ny, dir: this.dir });
+    
+    // 3. Mark cells as dirty so the renderer redraws them
+    this.grid.markDirty(nx, ny);
   }
+
 
   _dig(nx, ny) {
     this.grid.clear(nx, ny); // Clear dirt first
