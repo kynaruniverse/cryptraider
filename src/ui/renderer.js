@@ -7,6 +7,29 @@ import { TILE, TILE_SIZE, COLS, ROWS, STATE, CONFIG } from '../engine/constants.
 
 const T = TILE_SIZE; // 32
 
+// Translation map: Numeric Tile ID -> Sprite Atlas Key
+const TILE_MAP = {
+  [TILE.EMPTY]:    'empty',
+  [TILE.DIRT]:     'dirt',
+  [TILE.STONE]:    'stone',
+  [TILE.GRAVEL]:   'gravel',
+  [TILE.SAND]:     'sand',
+  [TILE.LADDER]:   'ladder',
+  [TILE.BOULDER]:  'boulder',
+  [TILE.CRYSTAL]:  'crystal',
+  [TILE.GEM]:      'gem',
+  [TILE.KEY]:      'key',
+  [TILE.DOOR]:     'door_closed',
+  [TILE.DOOR_OPEN]:'door_open',
+  [TILE.DYNAMITE]: 'dynamite',
+  [TILE.PORTAL]:   'portal_inactive',
+  [TILE.PORTAL_OPEN]: 'portal_active',
+  [TILE.MACHINE]:  'machine_inactive',
+  [TILE.ENEMY_M]:  'mummy',
+  [TILE.ENEMY_F]:  'fly'
+};
+
+
 export class Renderer {
   constructor(canvas, sprites) {
     this.canvas  = canvas;
@@ -155,24 +178,27 @@ export class Renderer {
     );
   }
   
-    // AAA Feature: Smoothed entity drawing for falling/moving objects
+  // AAA Feature: Smoothed entity drawing for falling/moving objects
   _renderMovingEntities(session) {
     const grid = session.grid;
     for (let i = 0; i < grid.cells.length; i++) {
       const meta = grid.meta[i];
+      // Only draw if currently animating a fall
       if (meta?.falling && meta.fallAnim !== undefined) {
         const x = i % grid.cols;
         const y = Math.floor(i / grid.cols);
+        
         // Smoothed quadratic easing for the fall
         const ease = meta.fallAnim * meta.fallAnim; 
         const visualOffset = (1 - ease) * -T + this._hudOffset;
         
         const type = grid.cells[i];
-        const sprite = type === TILE.GEM ? 'gem' : (type === TILE.CRYSTAL ? 'crystal' : 'boulder');
-        this.drawFromAtlas(sprite, x, y, T, visualOffset);
+        const spriteKey = TILE_MAP[type] || 'empty';
+        this.drawFromAtlas(spriteKey, x, y, T, visualOffset);
       }
     }
   }
+
 
   _renderGrid(grid, session) {
     const portalOpen = session?.portalOpen ?? false;
@@ -196,15 +222,21 @@ export class Renderer {
 
 
       // 2. Draw Entity
+      // Optimization: Draw static tiles using the map lookup
+      const spriteKey = TILE_MAP[tile];
+      
       switch (tile) {
-        case TILE.DIRT:    this.drawFromAtlas('dirt', x, y, T, this._hudOffset); break;
-        case TILE.STONE:   this.drawFromAtlas('stone', x, y, T, this._hudOffset); break;
-        case TILE.GRAVEL:  this.drawFromAtlas('gravel', x, y, T, this._hudOffset); break;
-        case TILE.SAND:    this.drawFromAtlas('sand', x, y, T, this._hudOffset); break;
-        case TILE.LADDER:  this.drawFromAtlas('ladder', x, y, T, this._hudOffset); break;
-        case TILE.BOULDER: this.drawFromAtlas('boulder', x, y, T, this._hudOffset); break;
-        case TILE.DYNAMITE:this.drawFromAtlas('dynamite', x, y, T, this._hudOffset); break;
-        case TILE.KEY:     this.drawFromAtlas('key', x, y, T, this._hudOffset); break;
+        case TILE.DIRT:    
+        case TILE.STONE:   
+        case TILE.GRAVEL:  
+        case TILE.SAND:    
+        case TILE.LADDER:  
+        case TILE.BOULDER: 
+        case TILE.DYNAMITE:
+        case TILE.KEY:     
+          this.drawFromAtlas(spriteKey, x, y, T, this._hudOffset); 
+          break;
+
         case TILE.DOOR:    
           if (!meta?.open) {
             this.drawFromAtlas('door_closed', x, y, T, this._hudOffset);
