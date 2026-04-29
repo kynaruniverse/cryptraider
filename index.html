@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="theme-color" content="#0A0400"/>
+  <title>Crypt Raider</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css"/>
+  <style>
+    /* Critical CSS for Load Screen */
+    body, html { margin:0; padding:0; background:#050200; overflow:hidden; width:100%; height:100%; font-family: 'Cinzel', serif; }
+    #loadScreen { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:999; background:#050200; color:#FFD700; text-align:center; }
+    .load-scarab { font-size:48px; margin-bottom:10px; animation: pulse 1.5s infinite ease-in-out; }
+    .load-title { font-size:32px; font-weight:900; letter-spacing:4px; color:#FFD700; text-shadow: 0 0 15px rgba(255,180,0,0.5); }
+    .load-subtitle { font-family: 'Share Tech Mono', monospace; font-size:12px; color:#886633; letter-spacing:2px; margin-bottom:20px; }
+    .load-bar-wrap { width:180px; height:4px; background:rgba(255,255,255,0.05); margin:0 auto; border-radius:2px; overflow:hidden; }
+    .load-bar { width:30%; height:100%; background:#AA8822; animation: load 2s infinite linear; }
+    @keyframes pulse { 0%, 100% { transform: scale(1); opacity:0.8; } 50% { transform: scale(1.1); opacity:1; } }
+    @keyframes load { 0% { margin-left:-40%; width:40%; } 100% { margin-left:100%; width:40%; } }
+  </style>
+</head>
+
+<body>
+
+  <!-- Loading screen -->
+  <div id="loadScreen">
+    <div class="load-inner">
+      <div class="load-scarab">🪲</div>
+      <div class="load-title">CRYPT RAIDER</div>
+      <div class="load-subtitle">THE LOST TOMBS</div>
+      <div class="load-bar-wrap">
+        <div class="load-bar"></div>
+      </div>
+      <div class="load-sub">Awakening ancient power…</div>
+    </div>
+  </div>
+
+  <!-- Game canvas -->
+  <canvas id="gameCanvas" style="display:none;"></canvas>
+  
+  <input type="text" id="kbdProxy" 
+         style="position:absolute; opacity:0; pointer-events:none; top:-100px;" 
+         maxlength="6" 
+         autocorrect="off" 
+         autocapitalize="characters">
+
+
+  <!-- Swipe hint overlay (shown briefly on first play) -->
+  <div id="swipeHint" style="display:none;">
+    <div class="hint-inner">
+      <div class="hint-arrow hint-up">↑</div>
+      <div class="hint-row">
+        <div class="hint-arrow hint-left">←</div>
+        <div class="hint-center">SWIPE<br>TO MOVE</div>
+        <div class="hint-arrow hint-right">→</div>
+      </div>
+      <div class="hint-arrow hint-down">↓</div>
+      <div class="hint-tap">Double-tap = TNT</div>
+    </div>
+  </div>
+
+  <!-- Module entry -->
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
