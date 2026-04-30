@@ -471,7 +471,8 @@ export async function loadAllSprites() {
   const atlasCanvas = document.createElement('canvas');
   atlasCanvas.width = cols * S;
   atlasCanvas.height = Math.ceil(totalSprites / cols) * S;
-  const ctx = atlasCanvas.getContext('2d');
+  const atlasCtx = atlasCanvas.getContext('2d');
+
 
   const spritesMap = {
     atlas: atlasCanvas,
@@ -487,7 +488,7 @@ export async function loadAllSprites() {
     if (img) {
       const x = (idx % cols) * S;
       const y = Math.floor(idx / cols) * S;
-      ctx.drawImage(img, x, y);
+      atlasCtx.drawImage(img, x, y);
       spritesMap.coords[key] = { x, y };
       idx++;
     }
