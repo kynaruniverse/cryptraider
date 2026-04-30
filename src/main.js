@@ -129,10 +129,9 @@ function _handleAction(action) {
 function _handleConfirm() {
   audio.menuSelect(); // Play feedback on every confirm action
   switch (uiState) {
-    case STATE.MENU:
-
+    case STATE.MENU: {
       // Get the relative tap position from InputSystem
-      const tap = input.getLastTapPosition(); // Ensure input.js has this
+      const tap = input.getLastTapPosition();
       const screenY = tap ? tap.y : 0;
       
       // Menu layout: Top = Start, Mid = High Scores, Bottom = Code Entry
@@ -145,6 +144,7 @@ function _handleConfirm() {
         _startNewGame();
       }
       break;
+    }
 
     case STATE.STORY:
       uiState = STATE.LEVEL_START;
@@ -212,12 +212,6 @@ function _bindInputToUI() {
     const ctx = audio._getCtx();
     if (ctx.state === 'suspended') ctx.resume();
     audio.startBGM();
-  }, { once: true });
-
-  canvas.addEventListener('pointerdown', () => {
-    const ctx = audio._getCtx();
-    if (ctx && ctx.state === 'suspended') ctx.resume();
-    // BGM only starts once the player moves past the menu
   }, { once: true });
 
   // Keyboard shortcut for menus

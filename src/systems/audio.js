@@ -142,7 +142,6 @@ export class AudioSystem {
     const ctx = this._getCtx();
     if (ctx.state === 'suspended') ctx.resume();
     if (this._bgActive) return;
-    const ctx = this._getCtx();
     
     this._bgActive = true;
     this._bgNoteIdx = 0;
