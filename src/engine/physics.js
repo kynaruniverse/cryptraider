@@ -103,10 +103,11 @@ export class Physics {
         
         // Chain reaction: Set to EMPTY immediately so it doesn't double-explode
         if (tile === TILE.DYNAMITE) {
-           this.grid.clear(ex, ey);
-           // Slight delay for visual "wave" effect
-           setTimeout(() => this.explode(ex, ey, 2), 100); 
+          this.grid.clear(ex, ey);
+            const g = this.grid;
+          setTimeout(() => { if (this.grid === g) this.explode(ex, ey, 2); }, 100);
         }
+
 
         destroyed.push({ x: ex, y: ey, type: tile });
         
@@ -115,8 +116,10 @@ export class Physics {
         this.grid.setMeta(ex, ey, { ttl: 500 }); // Time To Live: 500ms
         
         // Auto-clear explosion tile after TTL
+        const g2 = this.grid;
         setTimeout(() => {
-          if (this.grid.get(ex, ey) === TILE.EXPLOSION) this.grid.clear(ex, ey);
+          if (this.grid === g2 && this.grid.get(ex, ey) === TILE.EXPLOSION)
+            this.grid.clear(ex, ey);
         }, 500);
       }
     }

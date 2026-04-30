@@ -53,18 +53,16 @@ export class Player {
     
     switch (target) {
       case TILE.EMPTY:
-      case TILE.SAND:
       case TILE.LADDER:
-      case TILE.PORTAL_OPEN: // Now explicitly passable
+      case TILE.PORTAL_OPEN:
         this._move(nx, ny);
         break;
-
-
       case TILE.DIRT:
       case TILE.GRAVEL:
-      case TILE.SAND: // Sand is diggable/removable terrain
+      case TILE.SAND:
         this._dig(nx, ny);
         break;
+
 
       case TILE.CRYSTAL:
       case TILE.GEM:
@@ -137,9 +135,6 @@ export class Player {
 
     // 2. Emit event for camera/sounds
     this.events.emit('player_moved', { x: nx, y: ny, dir: this.dir });
-    
-    // 3. Mark cells as dirty so the renderer redraws them
-    this.grid.markDirty(nx, ny);
   }
 
 

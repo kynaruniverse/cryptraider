@@ -129,6 +129,7 @@ export class GameSession {
     on('boulder_pushed',() => this.audio.boulder());
 
     on('item_collected', ({ type, points }) => {
+      this._crystalCache = -1; // Invalidate cache
       this.score += points;
       this._checkHighScore();
       if (type === TILE.CRYSTAL) {
@@ -291,12 +292,19 @@ export class GameSession {
   }
 
   // ── Misc ──────────────────────────────────────────────────
-  _checkHighScore() {
-    if (this.score > this.highScore) {
-      this.highScore = this.score;
-      localStorage.setItem('cr_high', String(this.highScore));
+  resetGlobalProgress() {
+      this.lives     = CONFIG.STARTING_LIVES;
+      this.score     = 0;
+      this.currentLevel = 0;
+      this._codeInput   = '';
     }
-  }
+    _checkHighScore() {
+      if (this.score > this.highScore) {
+        this.highScore = this.score;
+        localStorage.setItem('cr_high', String(this.highScore));
+      }
+    }
+
 
   _cleanupLevel() {
     this._unsubs.forEach(fn => fn());

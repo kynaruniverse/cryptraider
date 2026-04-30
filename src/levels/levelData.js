@@ -23,7 +23,8 @@ const K = 15; // KEY
 const N = 16; // SAND
 
 // Wrap 9×15 inner grid with stone border → 11×17
-function stoneFrame(inner) {
+// Returns a proper level object compatible with Grid.loadArray()
+function stoneFrame(inner, name = '') {
   const W = 11, H = 17;
   const IW = 9;
   const out = [];
@@ -33,7 +34,7 @@ function stoneFrame(inner) {
       else out.push(inner[(y-1) * IW + (x-1)]);
     }
   }
-  return out;
+  return { width: W, height: H, map: out, name };
 }
 
 // ── Seeded RNG ────────────────────────────────────────────
@@ -223,7 +224,7 @@ stoneFrame([
   D,D,D,D,D,D,D,D,D,
   D,D,D,D,D,D,D,D,D,
   D,D,D,D,D,D,D,P,D,
-]),
+], 'The Entrance'),
 
 // ── Level 2 — Boulder puzzle ────────────────────────────
 stoneFrame([
@@ -242,7 +243,7 @@ stoneFrame([
   D,D,D,D,M,D,D,D,D,
   D,D,D,D,D,D,D,D,D,
   D,D,D,D,D,D,P,D,D,
-]),
+], 'Heavy Burden'),
 
 // ── Level 3 — First mummy ───────────────────────────────
 stoneFrame([
@@ -261,7 +262,7 @@ stoneFrame([
   D,D,D,D,D,D,D,D,D,
   D,D,D,D,M,D,D,D,D,
   D,D,D,D,D,P,D,D,D,
-]),
+], 'The Guardian'),
 
 // ── Level 4 — Ladder escape ─────────────────────────────
 stoneFrame([
@@ -280,7 +281,7 @@ stoneFrame([
   D,D,D,D,M,D,D,D,D,
   D,D,D,D,D,D,D,D,D,
   D,D,D,D,D,P,D,D,D,
-]),
+], 'Vertical Limits'),
 
 // ── Level 5 — Key + Door ────────────────────────────────
 stoneFrame([
@@ -299,13 +300,204 @@ stoneFrame([
   D,D,D,D,D,X,D,D,D,
   D,D,D,M,D,D,D,D,D,
   D,D,D,D,D,P,D,D,D,
-]),
+], 'The Locked Vault'),
+
+// ── Level 6 — TNT Introduction ──────────────────────────
+stoneFrame([
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,S,S,S,S,S,D,D,
+  D,D,S,C,S,C,S,D,D,
+  D,D,S,S,S,S,S,D,D,
+  D,D,D,D,Z,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,S,S,S,S,S,S,S,D,
+  D,S,_,_,_,_,_,S,D,
+  D,S,_,M,_,P,_,S,D,
+  D,S,S,S,S,S,S,S,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+], 'Blasting Zone'),
+
+// ── Level 7 — The Great Gravel Pit ─────────────────────
+stoneFrame([
+  D,L,D,G,G,G,D,D,D,
+  D,G,G,G,G,G,G,G,D,
+  G,G,C,G,G,G,C,G,G,
+  G,G,G,G,G,G,G,G,G,
+  G,G,G,G,B,G,G,G,G,
+  D,G,G,G,G,G,G,G,D,
+  D,D,G,G,M,G,G,D,D,
+  D,D,D,G,G,G,D,D,D,
+  D,D,D,D,P,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+], 'Unstable Ground'),
+
+// ── Level 8 — Twin Mummies ─────────────────────────────
+stoneFrame([
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  S,S,S,D,D,D,S,S,S,
+  C,D,S,D,D,D,S,D,C,
+  D,D,S,D,D,D,S,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,X,D,D,M,D,D,X,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,P,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+], 'Double Trouble'),
+
+// ── Level 9 — Sandstorm ────────────────────────────────
+stoneFrame([
+  D,L,D,D,D,D,D,D,D,
+  D,N,N,N,N,N,N,N,D,
+  D,N,C,N,N,N,C,N,D,
+  D,N,N,N,N,N,N,N,D,
+  D,N,N,N,B,N,N,N,D,
+  D,N,N,N,N,N,N,N,D,
+  D,N,N,N,M,N,N,N,D,
+  D,N,N,N,N,N,N,N,D,
+  D,D,D,D,P,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+], 'Shifting Sands'),
+
+// ── Level 10 — The Crossroad ───────────────────────────
+stoneFrame([
+  D,D,D,D,C,D,D,D,D,
+  D,D,D,D,A,D,D,D,D,
+  D,D,D,D,A,D,D,D,D,
+  C,A,A,A,L,A,A,A,C,
+  D,D,D,D,A,D,D,D,D,
+  D,D,D,D,A,D,D,D,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,P,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+], 'The Great Hub'),
+
+// ── Level 11 — Fly Swatter ────────────────────────────
+stoneFrame([
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,F,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,C,D,C,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,F,D,D,D,F,D,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,P,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+], 'Buzzing Chambers'),
+
+// ── Level 12 — Gem Hunt ───────────────────────────────
+stoneFrame([
+  D,L,D,D,D,D,D,D,D,
+  D,E,D,D,D,D,D,E,D,
+  D,D,D,D,S,D,D,D,D,
+  D,D,D,S,C,S,D,D,D,
+  D,D,D,D,S,D,D,D,D,
+  D,E,D,D,D,D,D,E,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,P,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+], 'Treasury Room'),
+
+// ── Level 13 — Boulder Run ────────────────────────────
+stoneFrame([
+  D,L,D,B,D,B,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  C,D,D,D,D,D,D,D,C,
+  S,S,S,S,D,S,S,S,S,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,P,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+], 'The Avalanche'),
+
+// ── Level 14 — Dig Deep ───────────────────────────────
+stoneFrame([
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  S,S,S,S,S,S,S,S,S,
+  C,D,D,D,D,D,D,D,C,
+  S,S,S,S,S,S,S,S,S,
+  D,D,D,M,D,P,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+], 'The Layer Cake'),
+
+// ── Level 15 — Master Challenge ───────────────────────
+stoneFrame([
+  D,L,D,D,S,D,D,C,D,
+  D,D,D,D,S,D,D,D,D,
+  D,X,D,D,S,D,D,F,D,
+  S,S,O,S,S,D,D,D,D,
+  D,D,_,D,D,D,D,D,D,
+  D,K,D,D,D,B,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,P,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+], 'The Final Trial'),
 
 ];
 
-// ── Procedurally generate levels 6–100 ──────────────────
-// Procedurally generate levels 6–100 using the Index, not the raw seed math
-for (let i = 5; i < 100; i++) {
-  LEVELS.push(generateLevel(i));
+// Procedural levels start at 16 (index 15)
+for (let i = 15; i < 100; i++) {
+  const gen = generateLevel(i + 1);
+  gen.name = `Catacomb ${i + 1}`;
+  LEVELS.push(gen);
 }
 

@@ -136,9 +136,10 @@ function _handleConfirm() {
       const screenY = tap ? tap.y : 0;
       
       // Menu layout: Top = Start, Mid = High Scores, Bottom = Code Entry
-      if (screenY > 0.7) {
+      // Button layout: NEW GAME ~47%, HIGH SCORES ~54%, CODE ENTRY ~61%
+      if (screenY > 0.57) {
         uiState = STATE.CODE_ENTRY;
-      } else if (screenY > 0.5) {
+      } else if (screenY > 0.50) {
         uiState = STATE.HIGH_SCORES;
       } else {
         _startNewGame();
@@ -146,7 +147,9 @@ function _handleConfirm() {
       break;
 
     case STATE.STORY:
-    case STATE.LEVEL_START: // Added to handle the level intro skip
+      uiState = STATE.LEVEL_START;
+      break;
+    case STATE.LEVEL_START:
       uiState = STATE.PLAYING;
       break;
 
@@ -163,6 +166,9 @@ function _handleConfirm() {
       uiState = STATE.MENU;
       session.resetGlobalProgress(); // We'll add this to GameSession if not there
       session._codeInput = '';
+      break;
+    case STATE.HIGH_SCORES:
+      uiState = STATE.MENU;
       break;
     case STATE.PAUSED:
       uiState = STATE.PLAYING;

@@ -135,10 +135,13 @@ export class AudioSystem {
     this._tone(110, 'sawtooth', 0.2, 0.3);
     this._tone(90,  'sawtooth', 0.3, 0.2, 0.1);
   }
-
+  
   // ── Background music — simple arpeggiated loop ─────────────
   startBGM() {
-    if (!this._enabled || this._bgActive) return;
+    if (!this._enabled) return;
+    const ctx = this._getCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    if (this._bgActive) return;
     const ctx = this._getCtx();
     
     this._bgActive = true;

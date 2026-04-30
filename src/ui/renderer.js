@@ -20,7 +20,6 @@ const TILE_MAP = {
   [TILE.GEM]:      'gem',
   [TILE.KEY]:      'key',
   [TILE.DOOR]:     'door_closed',
-  [TILE.DOOR_OPEN]:'door_open',
   [TILE.DYNAMITE]: 'dynamite',
   [TILE.PORTAL]:   'portal_inactive',
   [TILE.PORTAL_OPEN]: 'portal_active',
@@ -114,6 +113,9 @@ export class Renderer {
       case STATE.MENU:        this._renderMenu(session); break;
       case STATE.STORY:       this._renderStory(); break;
       case STATE.CODE_ENTRY:  this._renderCodeEntry(session); break;
+      case STATE.HIGH_SCORES: this._renderHighScores(session); break;
+      case STATE.LEVEL_START:  this._renderLevelStart(session); break;
+
       case STATE.PLAYING:     this._renderGame(session); break;
       case STATE.PAUSED:      this._renderPause(session); break;
       case STATE.LEVEL_WIN:   this._renderLevelWin(session); break;
@@ -260,27 +262,23 @@ export class Renderer {
           this.drawFromAtlas('fly', x, y, T, (this._frame % 8 < 4 ? -2 : 0) + this._hudOffset);
           break;
 
-        case TILE.PORTAL: {
-          const isActive = session?.portalOpen;
+        case TILE.PORTAL:
+        case TILE.PORTAL_OPEN: {
+          const isActive = tile === TILE.PORTAL_OPEN || session?.portalOpen;
           const pulse    = Math.sin(this._portalPulse) * 2;
           this.drawFromAtlas(isActive ? 'portal_active' : 'portal_inactive', x, y, T, (isActive ? pulse : 0) + this._hudOffset);
           break;
         }
 
         case TILE.MACHINE: {
-          const isOn = session?.portalOpen;
+          const isOn = meta?.active || meta?.charged || session?.portalOpen;
           this.drawFromAtlas(isOn ? 'machine_active' : 'machine_inactive', x, y, T, this._hudOffset);
           break;
         }
-
         default: break;
       }
-
     });
-
-    // Removed grid.clearDirty() from here to prevent premature clearing
   }
-
 
   renderPlayer(session) {
     if (!session.player?.alive) return;
@@ -359,8 +357,11 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.fillText(session.score, W / 2, 22);
 
-    // ── Crystal counter ──
-    const remaining = session.grid ? session.grid.count(TILE.CRYSTAL) : 0;
+    // ── Crystal counter (cached) ──
+    if (session._crystalCache === -1 || session._crystalCache === undefined) {
+      session._crystalCache = session.grid ? session.grid.count(TILE.CRYSTAL) : 0;
+    }
+    const remaining = session._crystalCache;
     ctx.fillStyle = '#55CCFF';
     ctx.font      = `12px ${font}`;
     ctx.textAlign = 'right';
@@ -847,5 +848,70 @@ export class Renderer {
     this.ctx.fillStyle   = color;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.restore();
+  }
+
+  // ── HIGH SCORES ───────────────────────────────────────────
+  _renderHighScores(session) {
+    const ctx = this.ctx;
+    const W   = this.canvas.width;
+    const H   = this.canvas.height;
+    const font = '"Share Tech Mono", monospace';
+
+    ctx.fillStyle = '#050200';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = '#FFD700';
+    ctx.font      = `900 ${Math.floor(W * 0.08)}px "Cinzel", serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('HALL OF FAME', W / 2, H * 0.22);
+
+    // Score Table
+    const tableY = H * 0.35;
+    const rowH   = H * 0.06;
+    ctx.fillStyle = '#CCAA44';
+    ctx.font      = `${Math.floor(H * 0.024)}px ${font}`;
+
+    ctx.fillText(`CURRENT BEST: ${session?.highScore || 0}`, W / 2, tableY);
+    
+    ctx.fillStyle = '#664422';
+    ctx.font      = `${Math.floor(H * 0.018)}px ${font}`;
+    ctx.fillText('Global rankings coming soon...', W / 2, tableY + rowH * 2);
+
+    // Tap to return
+    const pulse = 0.5 + Math.sin(this._frame * 0.08) * 0.5;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle   = '#886633';
+    ctx.font        = `${Math.floor(H * 0.02)}px ${font}`;
+    ctx.fillText('— Tap to return —', W / 2, H * 0.85);
+    ctx.restore();
+  }
+
+  // ── LEVEL START ───────────────────────────────────────────
+  _renderLevelStart(session) {
+    this._renderGame(session);
+    this._renderOverlay('#000000', 0.75);
+    const ctx = this.ctx;
+    const W   = this.canvas.width;
+    const H   = this.canvas.height;
+    const font = '"Share Tech Mono", monospace';
+
+    ctx.fillStyle = '#FFD700';
+    ctx.font      = `900 ${Math.floor(W * 0.08)}px "Cinzel", serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`LEVEL ${session.currentLevel + 1}`, W / 2, H * 0.42);
+
+    const levelName = session.grid?.name || "The Deep Tombs";
+    ctx.fillStyle = '#CCAA44';
+    ctx.font      = `italic ${Math.floor(H * 0.022)}px "Cinzel", serif`;
+    ctx.fillText(levelName, W / 2, H * 0.48);
+
+    const pulse = 0.5 + Math.sin(this._frame * 0.1) * 0.5;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle   = '#88CCFF';
+    ctx.font        = `bold ${Math.floor(H * 0.02)}px ${font}`;
+    ctx.fillText('Tap to begin', W / 2, H * 0.65);
+    ctx.restore();
   }
 }

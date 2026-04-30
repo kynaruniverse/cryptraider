@@ -133,20 +133,19 @@ export const SVG_BOULDER = svg(`
 export const SVG_CRYSTAL = svg(`
   <defs>
     <linearGradient id="crg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#AAEEFF"/>
-      <stop offset="40%" stop-color="#0088DD"/>
-      <stop offset="100%" stop-color="#003380"/>
+      <stop offset="0%" stop-color="#E0FFFF"/>
+      <stop offset="50%" stop-color="#00E5FF"/>
+      <stop offset="100%" stop-color="#006064"/>
     </linearGradient>
-    <filter id="cglow">
-      <feGaussianBlur stdDeviation="1.5" result="blur"/>
-      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
+    <filter id="cr-glow"><feGaussianBlur stdDeviation="2"/><feComposite in="SourceGraphic"/></filter>
   </defs>
-  <polygon points="16,2 22,10 26,18 16,30 6,18 10,10" fill="url(#crg)" stroke="#0055AA" stroke-width="0.8" filter="url(#cglow)"/>
-  <polygon points="16,5 20,11 16,26 12,11" fill="white" opacity="0.18"/>
-  <polygon points="16,4 19,9 16,6" fill="white" opacity="0.8"/>
-  <circle cx="16" cy="18" r="1" fill="white" opacity="0.6"/>
-  <line x1="10" y1="18" x2="22" y2="18" stroke="#88CCFF" stroke-width="0.6" opacity="0.5"/>
+  <path d="M16 2 L26 14 L16 30 L6 14 Z" fill="url(#crg)" filter="url(#cr-glow)"/>
+  <path d="M16 2 L26 14 L16 16 Z" fill="white" opacity="0.3"/>
+  <path d="M16 30 L26 14 L16 16 Z" fill="#0097A7" opacity="0.4"/>
+  <path d="M16 2 L6 14 L16 16 Z" fill="white" opacity="0.5"/>
+  <circle cx="16" cy="14" r="1" fill="white">
+     <animate attributeName="opacity" values="0.2;1;0.2" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
 `);
 
 export const SVG_GEM = svg(`
@@ -233,20 +232,21 @@ export const SVG_PORTAL_INACTIVE = svg(`
 export const SVG_PORTAL_ACTIVE = svg(`
   <defs>
     <radialGradient id="pag" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#00AAFF"/>
-      <stop offset="60%" stop-color="#0044BB"/>
-      <stop offset="100%" stop-color="#001144"/>
+      <stop offset="0%" stop-color="#00FFFF"/>
+      <stop offset="70%" stop-color="#0066FF"/>
+      <stop offset="100%" stop-color="#000033"/>
     </radialGradient>
-    <filter id="pglow">
-      <feGaussianBlur stdDeviation="2" result="blur"/>
-      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
+    <filter id="p-glow"><feGaussianBlur stdDeviation="2.5"/><feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0.8  0 0 0 0 1  0 0 0 1 0"/></filter>
   </defs>
-  <ellipse cx="16" cy="16" rx="14" ry="15" fill="url(#pag)" stroke="#44DDFF" stroke-width="1.5" filter="url(#pglow)"/>
-  <ellipse cx="16" cy="16" rx="9" ry="10" fill="none" stroke="#88EEFF" stroke-width="1.2" opacity="0.7"/>
-  <ellipse cx="16" cy="16" rx="4" ry="5"  fill="#CCFFFF" opacity="0.3"/>
-  <line x1="10" y1="16" x2="22" y2="16" stroke="#AAEEFF" stroke-width="0.6" opacity="0.5"/>
-  <line x1="16" y1="9"  x2="16" y2="23" stroke="#AAEEFF" stroke-width="0.6" opacity="0.5"/>
+  <circle cx="16" cy="16" r="15" fill="#00AAFF" filter="url(#p-glow)" opacity="0.6"/>
+  <ellipse cx="16" cy="16" rx="14" ry="15" fill="url(#pag)" stroke="#88FFFF" stroke-width="1.5"/>
+  <path d="M16 4 A12 12 0 0 1 28 16" stroke="white" stroke-width="1" fill="none" opacity="0.6">
+    <animateTransform attributeName="transform" type="rotate" from="0 16 16" to="360 16 16" dur="2s" repeatCount="indefinite"/>
+  </path>
+  <path d="M4 16 A12 12 0 0 1 16 28" stroke="#88FFFF" stroke-width="1" fill="none" opacity="0.4">
+    <animateTransform attributeName="transform" type="rotate" from="360 16 16" to="0 16 16" dur="3s" repeatCount="indefinite"/>
+  </path>
+  <circle cx="16" cy="16" r="4" fill="white" opacity="0.3"/>
 `);
 
 export const SVG_MACHINE_INACTIVE = svg(`
@@ -287,25 +287,18 @@ export const SVG_MACHINE_ACTIVE = svg(`
 //  PLAYER — Dr. Carter (4 directions)
 // ─────────────────────────────────────────────
 
-function playerBase(hatColor = '#C8A030', hatBrim = '#A07820') {
+function playerBase(hatColor = '#D4AF37', hatBrim = '#B8860B') {
   return `
-  <!-- Body -->
-  <ellipse cx="16" cy="29" rx="7" ry="3" fill="black" opacity="0.3"/>
-  <rect x="10" y="16" width="12" height="11" rx="2" fill="#8B6030"/>
-  <!-- Belt -->
-  <rect x="10" y="22" width="12" height="2.5" fill="#5A3010"/>
-  <rect x="14" y="21" width="4" height="4" rx="0.5" fill="#CC9900" stroke="#AA7700" stroke-width="0.5"/>
-  <!-- Legs -->
-  <rect x="10" y="27" width="5" height="5" rx="1" fill="#4A2808"/>
-  <rect x="17" y="27" width="5" height="5" rx="1" fill="#4A2808"/>
-  <!-- Head -->
-  <circle cx="16" cy="12" r="6" fill="#D4945A"/>
-  <!-- Hat brim -->
-  <rect x="7" y="10" width="18" height="2.5" rx="1" fill="${hatBrim}"/>
-  <!-- Hat top -->
-  <rect x="10" y="3" width="12" height="8" rx="2" fill="${hatColor}"/>
-  <!-- Hat band -->
-  <rect x="10" y="9" width="12" height="2" fill="#6A4010"/>
+  <ellipse cx="16" cy="30" rx="7" ry="2.5" fill="black" opacity="0.4"/>
+  <rect x="9" y="16" width="14" height="12" rx="2.5" fill="#8B4513"/>
+  <rect x="9" y="22" width="14" height="3" fill="#3E2723"/>
+  <rect x="14" y="21.5" width="4" height="4" rx="1" fill="#FFD700" stroke="#B8860B" stroke-width="0.5"/>
+  <rect x="9" y="28" width="6" height="4" rx="1.5" fill="#212121"/>
+  <rect x="17" y="28" width="6" height="4" rx="1.5" fill="#212121"/>
+  <circle cx="16" cy="12" r="7" fill="#FFCC99"/>
+  <rect x="6" y="10" width="20" height="3" rx="1.5" fill="${hatBrim}"/>
+  <path d="M10 11 L10 5 Q16 2 22 5 L22 11" fill="${hatColor}"/>
+  <rect x="10" y="8" width="12" height="2" fill="#4E342E"/>
 `;
 }
 
@@ -356,30 +349,20 @@ export const SVG_PLAYER_RIGHT = svg(`
 export const SVG_MUMMY = svg(`
   <defs>
     <linearGradient id="mummyg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#D4C890"/>
-      <stop offset="100%" stop-color="#9A8C50"/>
+      <stop offset="0%" stop-color="#EFEBE9"/>
+      <stop offset="100%" stop-color="#BCAAA4"/>
     </linearGradient>
+    <filter id="mummyglow"><feGaussianBlur stdDeviation="1" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
   </defs>
-  <!-- Body wrappings -->
-  <rect x="9" y="14" width="14" height="14" rx="3" fill="url(#mummyg)"/>
-  <line x1="9" y1="18" x2="23" y2="18" stroke="#7A6830" stroke-width="1.2" opacity="0.5"/>
-  <line x1="9" y1="22" x2="23" y2="22" stroke="#7A6830" stroke-width="1.2" opacity="0.5"/>
-  <!-- Head -->
-  <ellipse cx="16" cy="10" rx="7" ry="8" fill="url(#mummyg)"/>
-  <!-- Head wrappings -->
-  <line x1="9" y1="8"  x2="23" y2="8"  stroke="#7A6830" stroke-width="1" opacity="0.4"/>
-  <line x1="9" y1="12" x2="23" y2="12" stroke="#7A6830" stroke-width="1" opacity="0.4"/>
-  <!-- Eyes — glowing red -->
-  <circle cx="12" cy="10" r="2"   fill="#FF2200"/>
-  <circle cx="20" cy="10" r="2"   fill="#FF2200"/>
-  <circle cx="12.5" cy="9.5" r="0.7" fill="#FF8866" opacity="0.8"/>
-  <circle cx="20.5" cy="9.5" r="0.7" fill="#FF8866" opacity="0.8"/>
-  <!-- Dangling wraps -->
-  <line x1="12" y1="28" x2="11" y2="32" stroke="#B4A878" stroke-width="1.5" opacity="0.8"/>
-  <line x1="20" y1="28" x2="21" y2="32" stroke="#B4A878" stroke-width="1.5" opacity="0.8"/>
-  <!-- Arms -->
-  <rect x="3"  y="14" width="6" height="8" rx="2" fill="#C4B880"/>
-  <rect x="23" y="14" width="6" height="8" rx="2" fill="#C4B880"/>
+  <rect x="9" y="14" width="14" height="15" rx="3" fill="url(#mummyg)"/>
+  <path d="M9 16 H23 M9 20 H23 M9 24 H23" stroke="#8D6E63" stroke-width="0.8" opacity="0.6"/>
+  <circle cx="16" cy="9" r="8" fill="url(#mummyg)"/>
+  <path d="M10 6 Q16 4 22 6" stroke="#8D6E63" stroke-width="1" fill="none"/>
+  <circle cx="12" cy="9" r="2.5" fill="#FF0000" filter="url(#mummyglow)"/>
+  <circle cx="20" cy="9" r="2.5" fill="#FF0000" filter="url(#mummyglow)"/>
+  <rect x="4" y="14" width="5" height="10" rx="2" fill="#D7CCC8" transform="rotate(-15 4 14)"/>
+  <rect x="23" y="14" width="5" height="10" rx="2" fill="#D7CCC8" transform="rotate(15 28 14)"/>
+  <path d="M10 28 L8 32 M22 28 L24 32" stroke="#BCAAA4" stroke-width="1.5"/>
 `);
 
 export const SVG_FLY = svg(`

@@ -50,8 +50,10 @@ export const STATE = Object.freeze({
   LEVEL_FAIL: 'LEVEL_FAIL',
   GAME_OVER:  'GAME_OVER',
   GAME_WIN:   'GAME_WIN',
-  CODE_ENTRY: 'CODE_ENTRY',
-});
+  CODE_ENTRY:   'CODE_ENTRY',
+  HIGH_SCORES:  'HIGH_SCORES',
+  LEVEL_START:  'LEVEL_START',});
+
 
 // --- Directions ---
 export const DIR = Object.freeze({
