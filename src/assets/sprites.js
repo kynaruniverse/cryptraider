@@ -500,7 +500,7 @@ export async function loadAllSprites() {
     if (img) {
       const x = (idx % cols) * S;
       const y = Math.floor(idx / cols) * S;
-      ctx.drawImage(img, x, y);
+      atlasCtx.drawImage(img, x, y);
       spritesMap.coords[`explosion_${i}`] = { x, y };
       idx++;
     }

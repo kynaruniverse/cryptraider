@@ -4,6 +4,7 @@
 // ============================================================
 
 import { TILE, TILE_SIZE, COLS, ROWS, STATE, CONFIG } from '../engine/constants.js';
+import { LEVELS } from '../levels/levelData.js';
 
 const T = TILE_SIZE; // 32
 
@@ -22,7 +23,6 @@ const TILE_MAP = {
   [TILE.DOOR]:     'door_closed',
   [TILE.DYNAMITE]: 'dynamite',
   [TILE.PORTAL]:   'portal_inactive',
-  [TILE.PORTAL_OPEN]: 'portal_active',
   [TILE.MACHINE]:  'machine_inactive',
   [TILE.ENEMY_M]:  'mummy',
   [TILE.ENEMY_F]:  'fly'
@@ -901,7 +901,7 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.fillText(`LEVEL ${session.currentLevel + 1}`, W / 2, H * 0.42);
 
-    const levelName = session.grid?.name || "The Deep Tombs";
+    const levelName = LEVELS[session.currentLevel]?.name || 'The Deep Tombs';
     ctx.fillStyle = '#CCAA44';
     ctx.font      = `italic ${Math.floor(H * 0.022)}px "Cinzel", serif`;
     ctx.fillText(levelName, W / 2, H * 0.48);

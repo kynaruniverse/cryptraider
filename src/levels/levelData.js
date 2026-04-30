@@ -197,8 +197,9 @@ function generateLevel(levelIndex) {
     }
   });
 
-  return stoneFrame(inner);
+  return stoneFrame(inner, `Catacomb ${levelIndex + 1}`);
 }
+
 
 // ─────────────────────────────────────────────────────────
 //  HAND-CRAFTED LEVELS 1–5
@@ -495,9 +496,6 @@ stoneFrame([
 ];
 
 // Procedural levels start at 16 (index 15)
-for (let i = 15; i < 100; i++) {
-  const gen = generateLevel(i + 1);
-  gen.name = `Catacomb ${i + 1}`;
-  LEVELS.push(gen);
+for (let i = 15; i < 100; i++) {  LEVELS.push(generateLevel(i + 1));
 }
 
