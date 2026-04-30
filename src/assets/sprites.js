@@ -474,38 +474,29 @@ export async function loadAllSprites() {
   const atlasCtx = atlasCanvas.getContext('2d');
 
 
-  const spritesMap = {
-    atlas: atlasCanvas,
-    coords: {}, // Stores {x, y} for each sprite
-    S: S        // Original tile size (32)
-  };
+  const finalSprites = {};
 
   let idx = 0;
+  // Combine all defs and explosion frames into one loop
+  const allEntries = [...Object.entries(defs)];
+  SVG_EXPLOSION.forEach((svg, i) => allEntries.push([`explosion_${i}`, svg]));
 
-  // Render static sprites into Atlas
-  for (const key of keys) {
-    const img = await svgToImage(defs[key]);
+  for (const [key, svgStr] of allEntries) {
+    const img = await svgToImage(svgStr);
     if (img) {
-      const x = (idx % cols) * S;
-      const y = Math.floor(idx / cols) * S;
-      atlasCtx.drawImage(img, x, y);
-      spritesMap.coords[key] = { x, y };
-      idx++;
+      // Create a small offscreen canvas for THIS specific sprite
+      const canvas = document.createElement('canvas');
+      canvas.width = S;
+      canvas.height = S;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      
+      // Store the individual canvas in the map
+      finalSprites[key] = canvas;
     }
   }
 
-  // Render explosion frames into Atlas
-  for (let i = 0; i < SVG_EXPLOSION.length; i++) {
-    const img = await svgToImage(SVG_EXPLOSION[i]);
-    if (img) {
-      const x = (idx % cols) * S;
-      const y = Math.floor(idx / cols) * S;
-      atlasCtx.drawImage(img, x, y);
-      spritesMap.coords[`explosion_${i}`] = { x, y };
-      idx++;
-    }
-  }
-
-  return spritesMap;
+  // Add backward compatibility for the atlas if needed
+  finalSprites.atlas = atlasCanvas; 
+  return finalSprites;
 }
-

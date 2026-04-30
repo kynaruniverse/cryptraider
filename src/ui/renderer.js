@@ -3,8 +3,8 @@
 // Portrait-first canvas rendering, no d-pad, upgraded UI
 // ============================================================
 
-import { TILE, TILE_SIZE, COLS, ROWS, STATE, CONFIG } from '../engine/constants.js';
-import { LEVELS } from '../levels/levelData.js';
+import { TILE, TILE_SIZE, COLS, ROWS, STATE, CONFIG } from './constants.js';
+import { LEVELS } from './levelData.js';
 
 const T = TILE_SIZE; // 32
 
@@ -23,6 +23,7 @@ const TILE_MAP = {
   [TILE.DOOR]:     'door_closed',
   [TILE.DYNAMITE]: 'dynamite',
   [TILE.PORTAL]:   'portal_inactive',
+  [TILE.PORTAL_OPEN]: 'portal_active',
   [TILE.MACHINE]:  'machine_inactive',
   [TILE.ENEMY_M]:  'mummy',
   [TILE.ENEMY_F]:  'fly'

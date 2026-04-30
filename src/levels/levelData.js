@@ -496,6 +496,10 @@ stoneFrame([
 ];
 
 // Procedural levels start at 16 (index 15)
-for (let i = 15; i < 100; i++) {  LEVELS.push(generateLevel(i + 1));
+for (let i = 15; i < 100; i++) {
+  const levelNumber = i + 1;
+  const gen = generateLevel(levelNumber);
+  // Ensure the generated level has the name property for the Grid loader
+  gen.name = `Catacomb ${levelNumber}`;
+  LEVELS.push(gen);
 }
-

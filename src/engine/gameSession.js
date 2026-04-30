@@ -3,12 +3,12 @@
 // Orchestrates a single level: init, update, win/lose logic
 // ============================================================
 
-import { TILE, STATE, CONFIG, SCORE } from '../engine/constants.js';
-import { Grid }        from '../engine/grid.js';
-import { Physics }     from '../engine/physics.js';
-import { Player }      from '../entities/player.js';
-import { EnemyManager }from '../entities/enemies.js';
-import { LEVELS }      from '../levels/levelData.js';
+import { TILE, STATE, CONFIG, SCORE } from './constants.js';
+import { Grid }        from './grid.js';
+import { Physics }     from './physics.js';
+import { Player }      from './player.js';
+import { EnemyManager }from './enemies.js';
+import { LEVELS }      from './levelData.js';
 
 export class GameSession {
   constructor(eventBus, audio) {
@@ -31,7 +31,7 @@ export class GameSession {
     this.crystalsTotal    = 0;
     this.crystalsDeposited = 0;
     this.portalOpen   = false;
-    this.state        = STATE.MENU;
+    this.state        = STATE.BOOT;
 
     // Visual effects queue
     this.effects = []; // [{type, x, y, frame, maxFrame}]

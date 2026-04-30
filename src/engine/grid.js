@@ -199,21 +199,27 @@ export class Grid {
    * @param {Object} level - From levels/levelData.js
    */
   loadArray(level) {
-    this.cols = level.width;
-    this.rows = level.height;
+    // Standardize the dimensions from the level object
+    this.cols = level.width || 11; 
+    this.rows = level.height || 17;
     const size = this.cols * this.rows;
 
-    // Re-initialize buffers to match new level size
+    // Use standard Array if Uint8Array causes ID mismatch, 
+    // and ensure we handle the 'map' property correctly
+    const mapData = level.map || level; 
+    
     this.cells = new Uint8Array(size);
     this.meta = Array.from({ length: size }, () => ({}));
     
-    // Fill the grid with the level map data
     for (let i = 0; i < size; i++) {
-      this.cells[i] = level.map[i];
+      // Ensure we don't crash if the mapData is shorter than expected size
+      this.cells[i] = mapData[i] !== undefined ? mapData[i] : 0;
     }
     
     this.fullClearRequested = true;
     this.dirtyCells.clear();
+    console.log(`Grid loaded: ${this.cols}x${this.rows}, Name: ${level.name || 'Unknown'}`);
   }
+
 }
 

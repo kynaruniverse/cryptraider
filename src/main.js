@@ -3,13 +3,13 @@
 // Portrait-first, swipe-only controls
 // ============================================================
 
-import { loadAllSprites }  from './assets/sprites.js';
-import { EventBus }        from './engine/eventBus.js';
-import { GameSession }     from './engine/gameSession.js';
-import { Renderer }        from './ui/renderer.js';
-import { InputSystem }     from './systems/input.js';
-import { AudioSystem }     from './systems/audio.js';
-import { STATE, TILE_SIZE, COLS, ROWS } from './engine/constants.js';
+import { loadAllSprites }  from './sprites.js';
+import { EventBus }        from './eventBus.js';
+import { GameSession }     from './gameSession.js';
+import { Renderer }        from './renderer.js';
+import { InputSystem }     from './input.js';
+import { AudioSystem }     from './audio.js';
+import { STATE, TILE_SIZE, COLS, ROWS } from './constants.js';
 import { generateCode, validateCode } from './systems/levelCodes.js';
 
 // Expose level codes globally for renderer
