@@ -26,17 +26,25 @@ export class Player {
     this.grid.set(this.x, this.y, TILE.PLAYER);
   }
 
-  update(dt, inputDir) {
+  update(dt, inputSystem) {
     if (!this.alive) return;
 
     this._moveTimer += dt;
+    
+    // 1. Check if we are ready to move
     if (this._moveTimer < PLAYER_MOVE_INTERVAL_MS) return;
-    this._moveTimer = 0;
 
-    if (inputDir.x === 0 && inputDir.y === 0) return;
+    // 2. ONLY poll the direction if the timer has cleared.
+    // This ensures swipes stay in the buffer until the player is ready.
+    const inputDir = inputSystem.pollDir();
+    if (!inputDir || (inputDir.x === 0 && inputDir.y === 0)) return;
+
+    // 3. Reset timer only after we confirmed there is an actual move to make
+    this._moveTimer = 0;
 
     const nx = this.x + inputDir.x;
     const ny = this.y + inputDir.y;
+
 
     // Update facing direction
     if      (inputDir.y < 0) this.dir = DIR.UP;
@@ -54,9 +62,12 @@ export class Player {
     switch (target) {
       case TILE.EMPTY:
       case TILE.LADDER:
-      case TILE.PORTAL_OPEN:
         this._move(nx, ny);
         break;
+      case TILE.PORTAL_OPEN:
+        this.events.emit('player_entered_portal', { x: nx, y: ny });
+        break;
+
       case TILE.DIRT:
       case TILE.GRAVEL:
       case TILE.SAND:
@@ -129,11 +140,10 @@ export class Player {
 
   // ── Internal movement helpers ──────────────────────────────
   _move(nx, ny) {
-    // 1. Update the grid: Clear old position, set new position
-    this.grid.set(this.x, this.y, TILE.EMPTY);
+    // 1. Use atomic moveEntity for better performance and rendering sync
+    this.grid.moveEntity(this.x, this.y, nx, ny);
     this.x = nx;
     this.y = ny;
-    this.grid.set(this.x, this.y, TILE.PLAYER);
 
     // 2. Emit event for camera/sounds
     this.events.emit('player_moved', { x: nx, y: ny, dir: this.dir });

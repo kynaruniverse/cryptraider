@@ -65,19 +65,19 @@ export class Physics {
 
     // If target is empty or reactive (player/enemy/tnt), we can move there
     if (occupant === TILE.EMPTY || this.impactRules[occupant]) {
-      // 1. Trigger the impact rule first (before the move overwrites the occupant)
+      // 1. Trigger impact rules (Crush player, trigger TNT, etc.)
       if (this.impactRules[occupant]) {
         this.impactRules[occupant](tx, ty);
-        // If we hit something like TNT, it might disappear or explode, 
-        // re-verify if the spot is now available.
       }
 
-      // 2. Use the Grid's atomic move to handle meta and dirty-tracking
-      const type = this.grid.get(fx, fy);
-      this.grid.moveEntity(fx, fy, tx, ty);
-      
-      this.events.emit('object_fell', { from: { x: fx, y: fy }, to: { x: tx, y: ty }, type });
-      return true;
+      // 2. RE-CHECK: If we just crushed a player/enemy, the tile might still be occupied 
+      // by their "death" state. Only move if the tile is now EMPTY.
+      if (this.grid.get(tx, ty) === TILE.EMPTY) {
+        const type = this.grid.get(fx, fy);
+        this.grid.moveEntity(fx, fy, tx, ty);
+        this.events.emit('object_fell', { from: { x: fx, y: fy }, to: { x: tx, y: ty }, type });
+        return true;
+      }
     }
 
     return false;
@@ -99,13 +99,19 @@ export class Physics {
 
         // Special behavior for specific tiles during explosion
         if (tile === TILE.PLAYER) this.events.emit('player_crushed', { x: ex, y: ey });
-        if (tile === TILE.CRYSTAL) this.events.emit('crystal_destroyed', { x: ex, y: ey });
-        
-        // Chain reaction: Set to EMPTY immediately so it doesn't double-explode
+        if (tile === TILE.CRYSTAL) {
+          this.events.emit('crystal_destroyed', { x: ex, y: ey });
+          this.events.emit('item_collected', { type: TILE.CRYSTAL, points: 0 }); // Alert GameSession count changed
+        }
+
+        // Chain reaction: Set to EMPTY immediately, then trigger next explosion.
+        // We use a safer reference check to prevent errors on level exit.
         if (tile === TILE.DYNAMITE) {
           this.grid.clear(ex, ey);
-            const g = this.grid;
-          setTimeout(() => { if (this.grid === g) this.explode(ex, ey, 2); }, 100);
+          const currentGrid = this.grid;
+          setTimeout(() => { 
+            if (this.grid && this.grid === currentGrid) this.explode(ex, ey, 2); 
+          }, 60); // Faster chain reaction (60ms) feels more "Elite"
         }
 
 
@@ -115,15 +121,25 @@ export class Physics {
         this.grid.set(ex, ey, TILE.EXPLOSION);
         this.grid.setMeta(ex, ey, { ttl: 500 }); // Time To Live: 500ms
         
-        // Auto-clear explosion tile after TTL
-        const g2 = this.grid;
+        // PRO FIX: Only clear the tile if it's STILL an explosion.
+        // This prevents the "Ghost Deletion" bug where players/gems 
+        // moving into the blast zone get deleted by the timer.
+        const targetGrid = this.grid;
         setTimeout(() => {
-          if (this.grid === g2 && this.grid.get(ex, ey) === TILE.EXPLOSION)
-            this.grid.clear(ex, ey);
-        }, 500);
+          if (this.grid && this.grid === targetGrid) {
+            if (this.grid.get(ex, ey) === TILE.EXPLOSION) {
+              this.grid.clear(ex, ey);
+            }
+          }
+        }, 450); // Slightly faster clear for better visual snap
       }
     }
 
     this.events.emit('explosion', { x: cx, y: cy, radius, destroyed });
+  }
+
+  shake(amount = 10) {
+    // This allows other systems to trigger a screen shake through the physics engine
+    this.events.emit('explosion', { x: -1, y: -1, radius: 0, amount });
   }
 }

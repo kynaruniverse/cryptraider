@@ -49,15 +49,16 @@
 import { DIR } from '../engine/constants.js';
 
 // ── Tuning constants ──────────────────────────────────────
-const LOCK_THRESHOLD   = 10;    // CSS px   — displacement axis-lock
-const FLICK_VEL_PX_MS  = 0.45;  // px/ms    — velocity threshold for instant flick
-const VEL_WINDOW       = 3;     // samples  — rolling window size
-const SWIPE_MIN_DIST   = 8;     // CSS px   — minimum distance (belt-and-braces)
-const SWIPE_MAX_TIME   = 700;   // ms       — max stroke duration to register
-const DOUBLE_TAP_MS    = 280;   // ms       — max inter-tap gap for double-tap
-const TAP_MAX_DIST     = 12;    // CSS px   — max drift to still count as a tap
-const COOLDOWN_FAST    = 60;    // ms       — cooldown after a fast flick
-const COOLDOWN_SLOW    = 140;   // ms       — cooldown after a slow push
+const LOCK_THRESHOLD   = 6;     // PRO FIX: More sensitive initial movement
+const FLICK_VEL_PX_MS  = 0.25;  // PRO FIX: Lower threshold for "flick" detection
+const VEL_WINDOW       = 3;     
+const SWIPE_MIN_DIST   = 4;     // PRO FIX: Register tiny swipes
+const SWIPE_MAX_TIME   = 700;   
+const DOUBLE_TAP_MS    = 280;   
+const TAP_MAX_DIST     = 12;    
+const COOLDOWN_FAST    = 40;    // PRO FIX: Allow faster successive moves
+const COOLDOWN_SLOW    = 100;   // PRO FIX: Must be LOWER than PLAYER_MOVE_INTERVAL_MS (120ms)
+
 const DIR_QUEUE_MAX    = 6;     // entries  — max buffered directions
 const DIR_QUEUE_TTL    = 400;   // ms       — discard entries older than this
 const HAPTIC_SWIPE_MS  = 18;    // ms       — vibration on swipe
@@ -182,20 +183,17 @@ export class InputSystem {
         const avx = Math.abs(vx), avy = Math.abs(vy);
         let dir = null;
 
-        // Bias towards horizontal if vx is significantly stronger
-        if (avx > avy * 1.2) {
+        // PRO FIX: Reduced bias (1.1) and removed the 'dist > 4' hard-gate for velocities.
+        // If the finger is moving fast enough, the intent is clear regardless of distance.
+        if (avx > avy * 1.1) {
           dir = vx > 0 ? DIR.RIGHT : DIR.LEFT;
-        } else if (avy > avx * 1.2) {
+        } else if (avy > avx * 1.1) {
           dir = vy > 0 ? DIR.DOWN : DIR.UP;
         }
 
         if (dir) {
-          // Verify we have moved at least a tiny bit to prevent jitter-firing
-          const dist = this._dist(this._ptStart.x, this._ptStart.y, cx, cy);
-          if (dist > 4) { 
-            this._commitDir(dir, speed, now);
-            return true;
-          }
+          this._commitDir(dir, speed, now);
+          return true;
         }
       }
     }
@@ -233,14 +231,6 @@ export class InputSystem {
   _processEnd(ex, ey, isLeave) {
     const start     = this._ptStart;
     const committed = this._ptCommitted;
-
-    // Reset all stroke state
-    this._ptId        = null;
-    this._ptStart     = null;
-    this._ptAxis      = null;
-    this._ptCommitted = false;
-    this._velSamples  = [];
-
     if (!start) return;
 
     const dx   = ex - start.x;
@@ -248,42 +238,44 @@ export class InputSystem {
     const dt   = Date.now() - start.time;
     const dist = this._dist(start.x, start.y, ex, ey);
 
-    // pointerleave mid-swipe: still try to extract direction,
-    // but never treat as a tap (user didn't intend to tap)
+    start.endX = ex;
+    start.endY = ey;
+
     if (isLeave) {
       if (!committed && dist >= SWIPE_MIN_DIST && dt <= SWIPE_MAX_TIME) {
         const now = Date.now();
         if (now - this._lastSwipeAt >= COOLDOWN_SLOW) {
           const adx = Math.abs(dx), ady = Math.abs(dy);
-          const dir = adx >= ady
-            ? (dx > 0 ? DIR.RIGHT : DIR.LEFT)
-            : (dy > 0 ? DIR.DOWN  : DIR.UP);
+          const dir = adx >= ady ? (dx > 0 ? DIR.RIGHT : DIR.LEFT) : (dy > 0 ? DIR.DOWN : DIR.UP);
           this._commitDir(dir, 0, now);
         }
       }
+      this._resetStrokeState();
       return;
     }
 
-    // ── Tap ───────────────────────────────────────────────
     if (dist < TAP_MAX_DIST) {
       this._handleTap();
-      return;
-    }
-
-    // ── Fallback swipe on lift ────────────────────────────
-    // Catches cases where pointermove events were scarce
-    // (some Android Chrome versions throttle moves at low speed)
-    if (!committed && dist >= SWIPE_MIN_DIST && dt <= SWIPE_MAX_TIME) {
+    } else if (!committed && dist >= SWIPE_MIN_DIST && dt <= SWIPE_MAX_TIME) {
       const now = Date.now();
       if (now - this._lastSwipeAt >= COOLDOWN_SLOW) {
         const adx = Math.abs(dx), ady = Math.abs(dy);
-        const dir = adx >= ady
-          ? (dx > 0 ? DIR.RIGHT : DIR.LEFT)
-          : (dy > 0 ? DIR.DOWN  : DIR.UP);
+        const dir = adx >= ady ? (dx > 0 ? DIR.RIGHT : DIR.LEFT) : (dy > 0 ? DIR.DOWN : DIR.UP);
         this._commitDir(dir, 0, now);
       }
     }
+
+    this._resetStrokeState();
   }
+
+  _resetStrokeState() {
+    this._ptId        = null;
+    this._ptStart     = null;
+    this._ptAxis      = null;
+    this._ptCommitted = false;
+    this._velSamples  = [];
+  }
+
 
   // ──────────────────────────────────────────────────────────
   //  POINTER EVENTS  (primary — Android Chrome 57+, all modern)
@@ -379,10 +371,32 @@ export class InputSystem {
   //  (prevents accidental menu triggers during active gameplay)
   // ──────────────────────────────────────────────────────────
   _handleTap() {
+    const state = typeof this.stateGetter === 'function' ? this.stateGetter() : null;
+
+    // IF WE ARE IN A MENU: Trigger confirm immediately and stop.
+    // We don't want to wait for double-tap logic in the menu.
+    if (state !== 'PLAYING') {
+      const start = this._ptStart;
+      if (start) {
+        const rect = this.canvas.getBoundingClientRect();
+        // Use the release position (endX) for more accurate button clicking
+        const tapX = (start.endX !== undefined ? start.endX : start.x);
+        const tapY = (start.endY !== undefined ? start.endY : start.y);
+        
+        this.setLastTapPosition(
+          (tapX - rect.left) / rect.width,
+          (tapY - rect.top) / rect.height
+        );
+      }
+      this._emitAction('confirm');
+      this._tapState = 'idle';
+      return; 
+    }
+
+    // IF WE ARE PLAYING: Standard Double-tap vs Single-tap logic
     if (this._tapState === 'idle') {
       this._tapState = 'one';
       
-      // Store the tap coordinates immediately
       const start = this._ptStart;
       if (start) {
         const rect = this.canvas.getBoundingClientRect();
@@ -395,27 +409,20 @@ export class InputSystem {
       this._tapTimer = setTimeout(() => {
         this._tapState = 'idle';
         this._tapTimer = null;
-        
-        // Use the callback if provided, otherwise assume non-playing context
-        const state = typeof this.stateGetter === 'function' ? this.stateGetter() : null;
-        
-        // Allow 'confirm' during menus OR during level intro screens to skip animations
-        if (state !== 'PLAYING') {
-          this._emitAction('confirm');
-        }
-
+        // In playing state, a single tap doesn't do much, 
+        // but we keep the timer for the double-tap window.
       }, DOUBLE_TAP_MS);
 
     } else {
-      // Double-tap = bomb
+      // Double-tap = bomb (Only works while playing)
       clearTimeout(this._tapTimer);
       this._tapTimer = null;
       this._tapState = 'idle';
       this._emitAction('bomb');
-      // "Heartbeat" haptic for TNT
       this._haptic([HAPTIC_BOMB_MS, 30, HAPTIC_BOMB_MS]); 
     }
   }
+
 
   // ──────────────────────────────────────────────────────────
   //  Emit helpers

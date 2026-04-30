@@ -11,9 +11,10 @@ import { EnemyManager }from '../entities/enemies.js';
 import { LEVELS }      from '../levels/levelData.js';
 
 export class GameSession {
-  constructor(eventBus, audio) {
+  constructor(eventBus, audio, input) { // ADDED input here
     this.events  = eventBus;
     this.audio   = audio;
+    this.input   = input;             // STORE input here
     this.grid    = null;
     this.physics = null;
     this.player  = null;
@@ -74,7 +75,7 @@ export class GameSession {
   }
 
   // ── Main update tick ──────────────────────────────────────
-  update(dt, inputDir) {
+  update(dt) { // REMOVED inputDir (using this.input instead)
     if (this.state !== STATE.PLAYING) return;
 
     // Countdown timer
@@ -85,8 +86,8 @@ export class GameSession {
       return;
     }
 
-    // Player
-    this.player.update(dt, inputDir);
+    // Player: Pass the InputSystem instance so it can poll only when ready
+    this.player.update(dt, this.input);
 
     // Physics
     this.physics.update(dt);
@@ -110,8 +111,8 @@ export class GameSession {
     // Short fuse — explode after 1.5s (Logic synced to current level)
     const activeLevel = this.currentLevel;
     setTimeout(() => {
-      // Safety: Only explode if we are still playing the SAME level
-      if (this.state === STATE.PLAYING && this.currentLevel === activeLevel) {
+      // Safety: Added check for this.physics to prevent "Cannot read explode of null"
+      if (this.state === STATE.PLAYING && this.currentLevel === activeLevel && this.physics) {
         this.physics.explode(x, y, 2);
         this.audio.explosion();
       }
@@ -141,6 +142,8 @@ export class GameSession {
     });
 
     on('player_at_machine', () => this._depositCrystal());
+    
+    on('portal_opened', () => { if(this.physics) this.physics.shake(15); });
 
     on('player_entered_portal', () => {
       if (this.portalOpen) this._winLevel();
@@ -195,19 +198,23 @@ export class GameSession {
 
   // ── Crystal / Portal logic ────────────────────────────────
   _checkAllCrystals() {
-    // All crystals collected when grid has none left + we've collected all
-    const remaining = this.grid.count(TILE.CRYSTAL);
-    if (remaining === 0 && this.crystalsDeposited >= this.crystalsTotal) {
+    // Check if the grid is empty of crystals
+    const remainingInGrid = this.grid.count(TILE.CRYSTAL);
+    
+    // Auto-update deposited count based on what's missing from grid
+    this.crystalsDeposited = this.crystalsTotal - remainingInGrid;
+
+    // If everything is picked up, open the portal automatically 
+    // (Or require a machine visit by moving this check to _depositCrystal)
+    if (remainingInGrid === 0) {
       this._openPortal();
     }
   }
 
   _depositCrystal() {
-    // Logic: Every crystal collected by the player is 'carried' 
-    // and deposited here. 
-    this.crystalsDeposited = this.crystalsTotal - this.grid.count(TILE.CRYSTAL);
-    
-    if (this.crystalsDeposited >= this.crystalsTotal) {
+    // Optional: If you want the player to have to touch the machine 
+    // to "dump" crystals, keep this, but the auto-open above is smoother for mobile.
+    if (this.grid.count(TILE.CRYSTAL) === 0) {
       this._openPortal();
     }
   }

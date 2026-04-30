@@ -10,24 +10,26 @@ const T = TILE_SIZE; // 32
 
 // Translation map: Numeric Tile ID -> Sprite Atlas Key
 const TILE_MAP = {
-  [TILE.EMPTY]:    'empty',
-  [TILE.DIRT]:     'dirt',
-  [TILE.STONE]:    'stone',
-  [TILE.GRAVEL]:   'gravel',
-  [TILE.SAND]:     'sand',
-  [TILE.LADDER]:   'ladder',
-  [TILE.BOULDER]:  'boulder',
-  [TILE.CRYSTAL]:  'crystal',
-  [TILE.GEM]:      'gem',
-  [TILE.KEY]:      'key',
-  [TILE.DOOR]:     'door_closed',
-  [TILE.DYNAMITE]: 'dynamite',
-  [TILE.PORTAL]:   'portal_inactive',
+  [TILE.EMPTY]:       'empty',
+  [TILE.DIRT]:        'dirt',
+  [TILE.STONE]:       'stone',
+  [TILE.GRAVEL]:      'gravel',
+  [TILE.SAND]:        'sand',
+  [TILE.LADDER]:      'ladder',
+  [TILE.BOULDER]:     'boulder',
+  [TILE.CRYSTAL]:     'crystal',
+  [TILE.GEM]:         'gem',
+  [TILE.KEY]:         'key',
+  [TILE.DOOR]:        'door_closed',
+  [TILE.DYNAMITE]:    'dynamite',
+  [TILE.PORTAL]:      'portal_inactive',
   [TILE.PORTAL_OPEN]: 'portal_active',
-  [TILE.MACHINE]:  'machine_inactive',
-  [TILE.ENEMY_M]:  'mummy',
-  [TILE.ENEMY_F]:  'fly'
+  [TILE.MACHINE]:     'machine_inactive',
+  [TILE.ENEMY_M]:     'mummy',
+  [TILE.ENEMY_F]:     'fly',
+  [TILE.EXPLOSION]:   'explosion_0'
 };
+
 
 
 export class Renderer {
@@ -36,6 +38,7 @@ export class Renderer {
     this.ctx     = canvas.getContext('2d', { alpha: false }); // Optimization: Opaque canvas
     this.sprites = sprites;
     
+    this.updateLayout();
     // AAA Feature: Offscreen Buffer for static layers
     this.bgCanvas = document.createElement('canvas');
     this.bgCtx    = this.bgCanvas.getContext('2d', { alpha: false });
@@ -43,7 +46,8 @@ export class Renderer {
     this._frame  = 0;
     this._shake  = 0;
     // Dynamic offset based on screen height to prevent notch-clipping
-    this._hudOffset = this.canvas.height / ROWS > 34 ? 44 : 38; 
+    this._hudOffset = Math.floor(this.canvas.height * 0.08); // 8% of screen height for HUD
+
     this._portalPulse = 0;
     this._particles   = [];
     this._initParticles();
@@ -93,24 +97,35 @@ export class Renderer {
     this._portalPulse = (this._portalPulse + 0.08) % (Math.PI * 2);
     this._tickParticles();
   }
+  
+  updateLayout() {
+    // Dynamically calculate HUD height based on tile size/screen ratio
+    this._hudOffset = this.canvas.height / ROWS > 34 ? 44 : 38;
+  }  
 
   // ── Master render dispatcher ──────────────────────────────
   render(gameState, session, input) {
     this.tick();
     const ctx = this.ctx;
     
-    ctx.save();
-    // Apply Screen Shake
     if (this._shake > 0.1) {
       const sx = (Math.random() - 0.5) * this._shake;
       const sy = (Math.random() - 0.5) * this._shake;
       ctx.translate(sx, sy);
-      this._shake *= 0.85; // Quick decay
+      this._shake *= 0.85;
     }
-
+    
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
+    // ALWAYS draw the game world if we are in a game-related state
+    const isIngame = [STATE.PLAYING, STATE.PAUSED, STATE.LEVEL_START, STATE.STORY].includes(gameState);
+    if (isIngame && session && session.grid) {
+      this._renderGame(session); 
+    }
+
     switch (gameState) {
+      // Remove this case from the switch since we handle it above now
+      // case STATE.PLAYING: this._renderGame(session); break; 
       case STATE.MENU:        this._renderMenu(session); break;
       case STATE.STORY:       this._renderStory(); break;
       case STATE.CODE_ENTRY:  this._renderCodeEntry(session); break;
@@ -171,16 +186,19 @@ export class Renderer {
     ctx.restore();
   }
 
-    drawFromAtlas(key, x, y, size = T, offsetY = 0) {
-    const coord = this.sprites.coords[key];
-    if (!coord) return;
+drawFromAtlas(key, x, y, size = T, offsetY = 0) {
+    const s = this.sprites;
+    const coord = s.coords ? s.coords[key] : null;
+    if (!coord || !s.atlas) return;
+
     this.ctx.drawImage(
-      this.sprites.atlas,
-      coord.x, coord.y, this.sprites.S, this.sprites.S,
-      x * T, (y * T) + offsetY, size, size
+      s.atlas,
+      coord.x, coord.y, s.S, s.S,
+      Math.floor(x * T), Math.floor((y * T) + offsetY), 
+      size, size
     );
-  }
-  
+}
+
   // AAA Feature: Smoothed entity drawing for falling/moving objects
   _renderMovingEntities(session) {
     const grid = session.grid;
@@ -204,82 +222,54 @@ export class Renderer {
 
 
   _renderGrid(grid, session) {
-    const portalOpen = session?.portalOpen ?? false;
-    const isFullRedraw = grid.fullClearRequested || this._frame === 1;
-    const targetCtx = this.ctx;
+    const ctx = this.ctx;
+    
+    // FIX: Render the entire grid every frame. 
+    // Modern phones easily handle drawing a 11x17 map, and this guarantees no black screens.
+    const totalCells = grid.cells.length;
 
-    // Optimization: Only iterate over cells that actually changed
-    const cellsToDraw = isFullRedraw 
-      ? Array.from({length: grid.cols * grid.rows}, (_, i) => i) 
-      : grid.dirtyCells;
-
-    cellsToDraw.forEach(idx => {
+    for (let idx = 0; idx < totalCells; idx++) {
       const x = idx % grid.cols;
       const y = Math.floor(idx / grid.cols);
       const tile = grid.cells[idx];
       const meta = grid.meta[idx];
-      const px = x * T, py = y * T;
 
-      // 1. Draw base "floor"
+      // 1. Clear the tile area to prevent transparency ghosting
+      ctx.clearRect(x * T, (y * T) + this._hudOffset, T, T);
+
+      // 2. Draw Floor (Always draw 'empty' background under everything)
       this.drawFromAtlas('empty', x, y, T, this._hudOffset);
 
-
-      // 2. Draw Entity
-      switch (tile) {
-        case TILE.DIRT:    this.drawFromAtlas('dirt', x, y, T, this._hudOffset); break;
-        case TILE.STONE:   this.drawFromAtlas('stone', x, y, T, this._hudOffset); break;
-        case TILE.GRAVEL:  this.drawFromAtlas('gravel', x, y, T, this._hudOffset); break;
-        case TILE.SAND:    this.drawFromAtlas('sand', x, y, T, this._hudOffset); break;
-        case TILE.LADDER:  this.drawFromAtlas('ladder', x, y, T, this._hudOffset); break;
-        case TILE.BOULDER: this.drawFromAtlas('boulder', x, y, T, this._hudOffset); break;
-        case TILE.DYNAMITE:this.drawFromAtlas('dynamite', x, y, T, this._hudOffset); break;
-        case TILE.KEY:     this.drawFromAtlas('key', x, y, T, this._hudOffset); break;
-        case TILE.DOOR:    
-          if (!meta?.open) {
-            this.drawFromAtlas('door_closed', x, y, T, this._hudOffset);
-          } else {
-            // Draw an open passage or floor if the door was just opened
-            this.drawFromAtlas('empty', x, y, T, this._hudOffset);
-            this.drawFromAtlas('door_open', x, y, T, this._hudOffset);
-          }
-          break;
-        
-        case TILE.GEM:
-        case TILE.CRYSTAL: {
-          const isGem = tile === TILE.GEM;
+      // 3. Draw the specific tile with logic
+      const spriteKey = TILE_MAP[tile];
+      if (spriteKey && tile !== TILE.PLAYER) {
+        // Priority 1: The Portal
+        if (tile === TILE.PORTAL || tile === TILE.PORTAL_OPEN) {
+          const active = (tile === TILE.PORTAL_OPEN) || (session && session.portalOpen);
+          const pulse = active ? Math.sin(this._frame * 0.1) * 3 : 0;
+          this.drawFromAtlas(active ? 'portal_active' : 'portal_inactive', x, y, T, pulse + this._hudOffset);
+        }
+        // Priority 2: Collectibles (With Bobbing)
+        else if (tile === TILE.GEM || tile === TILE.CRYSTAL) {
           const bob = Math.sin(this._frame * 0.1 + x + y) * 2;
-          this.drawFromAtlas(isGem ? 'gem' : 'crystal', x, y, T, bob + this._hudOffset);
-          break;
+          this.drawFromAtlas(spriteKey, x, y, T, bob + this._hudOffset);
+        } 
+        // Priority 3: Doors & Interactive
+        else if (tile === TILE.DOOR && meta?.open) {
+          this.drawFromAtlas('door_open', x, y, T, this._hudOffset);
         }
-
-        case TILE.PLAYER: 
-          break;
-
-        case TILE.ENEMY_M:
-          this.drawFromAtlas('mummy', x, y, T, (this._frame % 10 < 5 ? -1 : 1) + this._hudOffset);
-          break;
-
-        case TILE.ENEMY_F:
-          this.drawFromAtlas('fly', x, y, T, (this._frame % 8 < 4 ? -2 : 0) + this._hudOffset);
-          break;
-
-        case TILE.PORTAL:
-        case TILE.PORTAL_OPEN: {
-          const isActive = tile === TILE.PORTAL_OPEN || session?.portalOpen;
-          const pulse    = Math.sin(this._portalPulse) * 2;
-          this.drawFromAtlas(isActive ? 'portal_active' : 'portal_inactive', x, y, T, (isActive ? pulse : 0) + this._hudOffset);
-          break;
-        }
-
-        case TILE.MACHINE: {
-          const isOn = meta?.active || meta?.charged || session?.portalOpen;
+        else if (tile === TILE.MACHINE) {
+          const isOn = meta?.active || (session && session.portalOpen);
           this.drawFromAtlas(isOn ? 'machine_active' : 'machine_inactive', x, y, T, this._hudOffset);
-          break;
         }
-        default: break;
-      }
-    });
-  }
+        // Priority 4: Standard blocks
+        else {
+          this.drawFromAtlas(spriteKey, x, y, T, this._hudOffset);
+        }
+      } // End if spriteKey
+    } // End for loop
+  } // End _renderGrid
+
 
   renderPlayer(session) {
     if (!session.player?.alive) return;
@@ -292,19 +282,16 @@ export class Renderer {
   _renderEffects(effects) {
     for (const fx of effects) {
       if (fx.type === 'explosion') {
-        const frame = Math.min(fx.frame, 7);
-        const r = fx.radius * T;
-        const coord = this.sprites.coords[`explosion_${frame}`];
-        if (coord) {
-          this.ctx.drawImage(
-            this.sprites.atlas,
-            coord.x, coord.y, this.sprites.S, this.sprites.S,
-            fx.x * T - r/2, fx.y * T - r/2, r * 2, r * 2
-          );
-        }
+        if (fx.frame === 0) this.applyShake(12); // Auto-shake on start
+        const frame = Math.min(Math.floor(fx.frame), 7);
+        const spriteKey = `explosion_${frame}`;
+        
+        // Render explosion relative to the HUD offset
+        this.drawFromAtlas(spriteKey, fx.x, fx.y, T * 2.5, this._hudOffset - T);
       }
     }
   }
+
 
 
   // ── HUD (portrait) ────────────────────────────────────────
@@ -358,12 +345,11 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.fillText(session.score, W / 2, 22);
 
-    // ── Crystal counter (cached) ──
-    if (session._crystalCache === -1 || session._crystalCache === undefined) {
-      session._crystalCache = session.grid ? session.grid.count(TILE.CRYSTAL) : 0;
-    }
-    const remaining = session._crystalCache;
+    // ── Crystal counter (Live) ──
+    // Direct count from grid is more reliable for the HUD than the cache during movement
+    const remaining = session.grid ? session.grid.count(TILE.CRYSTAL) : 0;
     ctx.fillStyle = '#55CCFF';
+
     ctx.font      = `12px ${font}`;
     ctx.textAlign = 'right';
     ctx.fillText(`◆ ${remaining}`, W - 56, 22);
