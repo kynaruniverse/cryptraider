@@ -3,8 +3,8 @@
 // Portrait-first canvas rendering, no d-pad, upgraded UI
 // ============================================================
 
-import { TILE, TILE_SIZE, COLS, ROWS, STATE, CONFIG } from './constants.js';
-import { LEVELS } from './levelData.js';
+import { TILE, TILE_SIZE, COLS, ROWS, STATE, CONFIG } from '../engine/constants.js';
+import { LEVELS } from '../levels/levelData.js';
 
 const T = TILE_SIZE; // 32
 

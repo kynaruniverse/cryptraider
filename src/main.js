@@ -3,13 +3,13 @@
 // Portrait-first, swipe-only controls
 // ============================================================
 
-import { loadAllSprites }  from './sprites.js';
-import { EventBus }        from './eventBus.js';
-import { GameSession }     from './gameSession.js';
-import { Renderer }        from './renderer.js';
-import { InputSystem }     from './input.js';
-import { AudioSystem }     from './audio.js';
-import { STATE, TILE_SIZE, COLS, ROWS } from './constants.js';
+import { loadAllSprites }  from './assets/sprites.js';
+import { EventBus }        from './engine/eventBus.js';
+import { GameSession }     from './engine/gameSession.js';
+import { Renderer }        from './ui/renderer.js';
+import { InputSystem }     from './systems/input.js';
+import { AudioSystem }     from './systems/audio.js';
+import { STATE, TILE_SIZE, COLS, ROWS } from './engine/constants.js';
 import { generateCode, validateCode } from './systems/levelCodes.js';
 
 // Expose level codes globally for renderer
@@ -54,7 +54,7 @@ if (screen?.orientation?.lock) {
 // ── Core systems ──────────────────────────────────────────
 const events  = new EventBus();
 const audio   = new AudioSystem();
-const input   = new InputSystem(canvas);
+const input   = new InputSystem(canvas, () => uiState);
 
 // ── State ─────────────────────────────────────────────────
 let uiState   = STATE.MENU;
@@ -134,12 +134,11 @@ function _handleConfirm() {
       const tap = input.getLastTapPosition();
       const screenY = tap ? tap.y : 0;
       
-      // Menu layout: Top = Start, Mid = High Scores, Bottom = Code Entry
-      // Button layout: NEW GAME ~47%, HIGH SCORES ~54%, CODE ENTRY ~61%
+      // Menu layout: Top = NEW GAME (~47%), Mid = ENTER CODE (~54%), Bottom = HIGH SCORES (~61%)
       if (screenY > 0.57) {
-        uiState = STATE.CODE_ENTRY;
-      } else if (screenY > 0.50) {
         uiState = STATE.HIGH_SCORES;
+      } else if (screenY > 0.50) {
+        uiState = STATE.CODE_ENTRY;
       } else {
         _startNewGame();
       }
@@ -170,6 +169,27 @@ function _handleConfirm() {
     case STATE.HIGH_SCORES:
       uiState = STATE.MENU;
       break;
+    case STATE.CODE_ENTRY: {
+      // Validate and jump to level if code is correct
+      const code = session._codeInput || '';
+      if (code.length === 6) {
+        const result = validateCode(code);
+        if (result) {
+          audio.codeSuccess();
+          session.jumpToLevel(result.level - 1);
+          uiState = STATE.STORY;
+        } else {
+          audio.codeFail();
+          session._codeInput = '';
+          // Stay in CODE_ENTRY to retry
+        }
+      } else {
+        // Not enough characters, go back to menu
+        uiState = STATE.MENU;
+        session._codeInput = '';
+      }
+      break;
+    }
     case STATE.PAUSED:
       uiState = STATE.PLAYING;
       break;
@@ -217,6 +237,18 @@ function _bindInputToUI() {
   // Keyboard shortcut for menus
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Enter') input.triggerAction('confirm');
+    
+    // Code entry keyboard input
+    if (uiState === STATE.CODE_ENTRY && session) {
+      const code = session._codeInput || '';
+      if (e.key.match(/^[A-Za-z0-9]$/) && code.length < 6) {
+        session._codeInput = (code + e.key.toUpperCase()).slice(0, 6);
+        e.preventDefault();
+      } else if (e.code === 'Backspace' && code.length > 0) {
+        session._codeInput = code.slice(0, -1);
+        e.preventDefault();
+      }
+    }
   });
 }
 

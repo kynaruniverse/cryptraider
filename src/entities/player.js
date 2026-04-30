@@ -121,6 +121,8 @@ export class Player {
   placeDynamite() {
     if (!this.alive || this.hasDynamite <= 0) return false;
     this.hasDynamite--;
+    // Place dynamite tile on the grid
+    this.grid.set(this.x, this.y, TILE.DYNAMITE);
     this.events.emit('dynamite_placed', { x: this.x, y: this.y });
     return true;
   }

@@ -6,9 +6,9 @@
 import { TILE, STATE, CONFIG, SCORE } from './constants.js';
 import { Grid }        from './grid.js';
 import { Physics }     from './physics.js';
-import { Player }      from './player.js';
-import { EnemyManager }from './enemies.js';
-import { LEVELS }      from './levelData.js';
+import { Player }      from '../entities/player.js';
+import { EnemyManager }from '../entities/enemies.js';
+import { LEVELS }      from '../levels/levelData.js';
 
 export class GameSession {
   constructor(eventBus, audio) {

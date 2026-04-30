@@ -400,7 +400,7 @@ export class InputSystem {
         const state = typeof this.stateGetter === 'function' ? this.stateGetter() : null;
         
         // Allow 'confirm' during menus OR during level intro screens to skip animations
-        if (state !== 'PLAYING' || state === 'LEVEL_START') {
+        if (state !== 'PLAYING') {
           this._emitAction('confirm');
         }
 
