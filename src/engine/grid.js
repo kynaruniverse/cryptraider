@@ -60,8 +60,12 @@ export class Grid {
 
   // ── Core IO (with Change Tracking) ────────────────────────
   get(x, y) {
+    // 1. Boundary Check: Return STONE for anything outside the map
     if (x < 0 || x >= this.cols || y < 0 || y >= this.rows) return TILE.STONE;
-    return this.cells[y * this.cols + x];
+    
+    // 2. Index Safety: Ensure we don't return 'undefined' which causes crashes
+    const val = this.cells[y * this.cols + x];
+    return (val === undefined || val === null) ? TILE.EMPTY : val;
   }
 
   set(x, y, type) {
@@ -105,22 +109,27 @@ export class Grid {
   /** Moves an entity and its metadata atomically */
   moveEntity(fx, fy, tx, ty) {
     const type = this.get(fx, fy);
-    const meta = this.getMeta(fx, fy) || {};
+    // Use structuredClone or spread to ensure we aren't passing by reference
+    const meta = { ...(this.getMeta(fx, fy) || {}) };
     
-    // Auto-detect vertical movement for physics animation smoothing
+    // Auto-detect vertical movement
     if (ty > fy) {
       meta.falling = true;
-      meta.fallAnim = 0; 
+      meta.fallAnim = (meta.fallAnim || 0); 
     } else {
       meta.falling = false;
+      meta.fallAnim = 0;
     }
 
-    this.clear(fx, fy); // This will reset fx, fy to {} meta
+    // Atomic Swap
+    this.clear(fx, fy); 
     this.set(tx, ty, type);
     this.setMeta(tx, ty, meta);
+    
+    // Mark both spots as dirty for the renderer
+    this.dirtyCells.add(this.idx(fx, fy));
+    this.dirtyCells.add(this.idx(tx, ty));
   }
-
-
 
   /** Iterator for surrounding tiles (useful for explosions/AI) */
   forEachNeighbor(x, y, callback) {
@@ -212,8 +221,9 @@ export class Grid {
     this.meta = Array.from({ length: size }, () => ({}));
     
     for (let i = 0; i < size; i++) {
-      // Ensure we don't crash if the mapData is shorter than expected size
-      this.cells[i] = mapData[i] !== undefined ? mapData[i] : 0;
+      // Fallback to DIRT (1) if the level data is truncated to prevent void-crashes
+      const tile = mapData[i];
+      this.cells[i] = (tile !== undefined && tile !== null) ? tile : TILE.DIRT;
     }
     
     this.fullClearRequested = true;

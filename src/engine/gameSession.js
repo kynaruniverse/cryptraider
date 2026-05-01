@@ -198,26 +198,23 @@ export class GameSession {
 
   // ── Crystal / Portal logic ────────────────────────────────
   _checkAllCrystals() {
-    // Check if the grid is empty of crystals
-    const remainingInGrid = this.grid.count(TILE.CRYSTAL);
-    
-    // Auto-update deposited count based on what's missing from grid
-    this.crystalsDeposited = this.crystalsTotal - remainingInGrid;
-
-    // If everything is picked up, open the portal automatically 
-    // (Or require a machine visit by moving this check to _depositCrystal)
-    if (remainingInGrid === 0) {
-      this._openPortal();
-    }
+    // We no longer auto-open the portal here. 
+    // We just update the internal state.
+    const remaining = this.grid.count(TILE.CRYSTAL);
+    this.crystalsDeposited = this.crystalsTotal - remaining;
   }
 
   _depositCrystal() {
-    // Optional: If you want the player to have to touch the machine 
-    // to "dump" crystals, keep this, but the auto-open above is smoother for mobile.
+    // Only open the portal if the player touches the machine 
+    // AND they actually have all the crystals.
     if (this.grid.count(TILE.CRYSTAL) === 0) {
       this._openPortal();
+    } else {
+      // Optional: Add a "Need more crystals" sound/effect here
+      this.audio.denied && this.audio.denied();
     }
   }
+
 
   _openPortal() {
     if (this.portalOpen) return;

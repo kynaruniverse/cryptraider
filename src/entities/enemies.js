@@ -118,9 +118,15 @@ export class Mummy extends Enemy {
           Mummy._queue[tail++] = nIdx;
         }
       }
-      if (tail > 250) break; 
+      // SAFETY: If the search space gets too large or unreachable, 
+      // stop the search to prevent the browser from freezing.
+      if (tail > 400 || head > 1000) break; 
     }
+
+    // Clean up memory before exiting so the next frame starts fresh
+    Mummy._queue.fill(0);
     return null;
+
   }
 
 }

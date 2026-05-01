@@ -1,5 +1,5 @@
 // ============================================================
-// CRYPT RAIDER — Elite Physics System (Reactive Pattern)
+// CRYPT RAIDER — Evolved Elite Physics System
 // ============================================================
 
 import { TILE, GRAVITY_INTERVAL_MS } from './constants.js';
@@ -12,10 +12,16 @@ export class Physics {
 
     // Define "Rules" for how tiles respond to impact
     this.impactRules = {
-      [TILE.PLAYER]:    (x, y) => this.events.emit('player_crushed', { x, y }),
-      [TILE.ENEMY_M]:   (x, y) => this.events.emit('enemy_crushed',  { x, y, type: TILE.ENEMY_M }),
-      [TILE.ENEMY_F]:   (x, y) => this.events.emit('enemy_crushed',  { x, y, type: TILE.ENEMY_F }),
-      [TILE.DYNAMITE]: (x, y) => this.explode(x, y, 2)
+      [TILE.PLAYER]: (tx, ty, fallingType) => {
+        // Only kill the player if the falling object is a BOULDER (Weighted Physics)
+        if (fallingType === TILE.BOULDER) {
+          this.events.emit('player_crushed', { x: tx, y: ty });
+        }
+      },
+
+      [TILE.ENEMY_M]: (tx, ty) => this.events.emit('enemy_crushed', { x: tx, y: ty, type: TILE.ENEMY_M }),
+      [TILE.ENEMY_F]: (tx, ty) => this.events.emit('enemy_crushed', { x: tx, y: ty, type: TILE.ENEMY_F }),
+      [TILE.DYNAMITE]: (tx, ty) => this.explode(tx, ty, 2)
     };
   }
 
@@ -27,65 +33,101 @@ export class Physics {
     }
   }
 
+  /**
+   * Main Gravity Loop: Processes the grid from bottom to top
+   * to ensure stable falling and prevent clumping.
+   */
   _tickGravity() {
     const { rows, cols } = this.grid;
-    // Process bottom-up to ensure stable falling
-    for (let y = rows - 2; y >= 0; y--) {
-      for (let x = 0; x < cols; x++) {
-        if (!this.grid.isGravityAffected(x, y)) continue;
+    const processedThisTick = new Set();
 
-        // Try Fall -> Try Slide Left -> Try Slide Right
-        const moved = this._tryMove(x, y, 0, 1) || 
-                      this._trySlide(x, y, -1) || 
-                      this._trySlide(x, y, 1);
+    for (let y = rows - 1; y >= 0; y--) {
+      for (let x = 0; x < cols; x++) {
+        const idx = y * cols + x;
+        if (processedThisTick.has(idx)) continue;
+
+        if (!this.grid.isGravityAffected(x, y)) {
+          // If a non-gravity tile was marked as falling, reset it
+          const meta = this.grid.getMeta(x, y);
+          if (meta?.falling) meta.falling = false;
+          continue;
+        }
+
+        // Logical Priority: 1. Fall Down | 2. Slide Left | 3. Slide Right
+        const moved = this._tryMove(x, y, 0, 1, processedThisTick) || 
+                      this._trySlide(x, y, -1, processedThisTick) || 
+                      this._trySlide(x, y, 1, processedThisTick);
+
+        if (!moved) {
+          // If it didn't move, it's resting.
+          const i = idx;
+          const meta = this.grid.meta[i];
+          if (meta && meta.falling) {
+            meta.falling = false;
+            meta.fallAnim = 0;
+            this.grid.dirtyCells.add(i); // Force renderer to update the resting position
+          }
+        }
       }
     }
   }
 
-  _trySlide(x, y, dx) {
+  _trySlide(x, y, dx, processedSet) {
     const type = this.grid.get(x, y);
+    // Only Boulders and Gems roll off surfaces
     if (type !== TILE.BOULDER && type !== TILE.GEM) return false;
 
-    // EVOLUTION: Only slide if resting on a slippery surface (Boulder, Gem, Stone)
+    // Check if resting on a "rounded" or "slippery" surface
     const below = this.grid.get(x, y + 1);
-    const isSlippery = [TILE.BOULDER, TILE.GEM, TILE.STONE].includes(below);
-    if (!isSlippery) return false;
-    
-    // Check clearance for the "diagonal" move
-    if (this.grid.get(x + dx, y) === TILE.EMPTY && this.grid.get(x + dx, y + 1) === TILE.EMPTY) {
-      return this._tryMove(x, y, dx, 1);
+    const slippery = [TILE.BOULDER, TILE.GEM, TILE.STONE, TILE.MACHINE].includes(below);
+    if (!slippery) return false;
+
+    // Must have air to the side AND air diagonally below
+    if (this.grid.get(x + dx, y) === TILE.EMPTY && 
+        this.grid.get(x + dx, y + 1) === TILE.EMPTY) {
+      return this._tryMove(x, y, dx, 1, processedSet);
     }
     return false;
   }
 
-
-  _tryMove(fx, fy, dx, dy) {
+  _tryMove(fx, fy, dx, dy, processedSet) {
     const tx = fx + dx, ty = fy + dy;
-    const occupant = this.grid.get(tx, ty);
+    if (!this.grid.inBounds(tx, ty)) return false;
 
-    // If target is empty or reactive (player/enemy/tnt), we can move there
-    if (occupant === TILE.EMPTY || this.impactRules[occupant]) {
-      // 1. Trigger impact rules (Crush player, trigger TNT, etc.)
-      if (this.impactRules[occupant]) {
-        this.impactRules[occupant](tx, ty);
+    const type = this.grid.get(fx, fy);
+    const occupant = this.grid.get(tx, ty);
+    const meta = this.grid.getMeta(fx, fy) || {};
+
+    // Condition: Target must be Empty OR an entity we can impact
+    const isTargetEmpty = occupant === TILE.EMPTY;
+    const canImpact = !!this.impactRules[occupant];
+
+    // TRICK: Only trigger impact if we were already "falling" or if moving directly down
+    if (isTargetEmpty || (canImpact && (meta.falling || dy > 0))) {
+      
+      if (canImpact) {
+        this.impactRules[occupant](tx, ty, type);
       }
 
-      // 2. RE-CHECK: If we just crushed a player/enemy, the tile might still be occupied 
-      // by their "death" state. Only move if the tile is now EMPTY.
+      // Re-verify space is clear (in case impact didn't clear it yet)
       if (this.grid.get(tx, ty) === TILE.EMPTY) {
-        const type = this.grid.get(fx, fy);
+        meta.falling = true;
         this.grid.moveEntity(fx, fy, tx, ty);
+        
+        // Mark new index as processed so it doesn't move again this tick
+        processedSet.add(ty * this.grid.cols + tx);
+        
         this.events.emit('object_fell', { from: { x: fx, y: fy }, to: { x: tx, y: ty }, type });
         return true;
       }
     }
-
     return false;
   }
 
   explode(cx, cy, radius = 2) {
     const destroyed = [];
     const r2 = radius * radius;
+    const currentGrid = this.grid;
 
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -95,51 +137,44 @@ export class Physics {
         if (!this.grid.inBounds(ex, ey)) continue;
 
         const tile = this.grid.get(ex, ey);
-        if (tile === TILE.STONE || tile === TILE.EMPTY) continue;
+        
+        // Unbreakable tiles
+        if (tile === TILE.STONE || tile === TILE.EMPTY || tile === TILE.PORTAL_OPEN) continue;
 
-        // Special behavior for specific tiles during explosion
+        // Reactive logic
         if (tile === TILE.PLAYER) this.events.emit('player_crushed', { x: ex, y: ey });
         if (tile === TILE.CRYSTAL) {
           this.events.emit('crystal_destroyed', { x: ex, y: ey });
-          this.events.emit('item_collected', { type: TILE.CRYSTAL, points: 0 }); // Alert GameSession count changed
+          this.events.emit('item_collected', { type: TILE.CRYSTAL, points: 0 });
         }
 
-        // Chain reaction: Set to EMPTY immediately, then trigger next explosion.
-        // We use a safer reference check to prevent errors on level exit.
+        // Chain Reaction
         if (tile === TILE.DYNAMITE) {
           this.grid.clear(ex, ey);
-          const currentGrid = this.grid;
           setTimeout(() => { 
-            if (this.grid && this.grid === currentGrid) this.explode(ex, ey, 2); 
-          }, 60); // Faster chain reaction (60ms) feels more "Elite"
+            if (this.grid === currentGrid) this.explode(ex, ey, 2); 
+          }, 100);
         }
-
 
         destroyed.push({ x: ex, y: ey, type: tile });
         
-        // EVOLUTION: Leave an "Explosion" tile briefly for the Renderer
+        // Visualization
         this.grid.set(ex, ey, TILE.EXPLOSION);
-        this.grid.setMeta(ex, ey, { ttl: 500 }); // Time To Live: 500ms
+        this.grid.setMeta(ex, ey, { ttl: 500 });
         
-        // PRO FIX: Only clear the tile if it's STILL an explosion.
-        // This prevents the "Ghost Deletion" bug where players/gems 
-        // moving into the blast zone get deleted by the timer.
-        const targetGrid = this.grid;
         setTimeout(() => {
-          if (this.grid && this.grid === targetGrid) {
-            if (this.grid.get(ex, ey) === TILE.EXPLOSION) {
-              this.grid.clear(ex, ey);
-            }
+          if (this.grid === currentGrid && this.grid.get(ex, ey) === TILE.EXPLOSION) {
+            this.grid.clear(ex, ey);
           }
-        }, 450); // Slightly faster clear for better visual snap
+        }, 400);
       }
     }
 
     this.events.emit('explosion', { x: cx, y: cy, radius, destroyed });
+    this.shake(15);
   }
 
   shake(amount = 10) {
-    // This allows other systems to trigger a screen shake through the physics engine
     this.events.emit('explosion', { x: -1, y: -1, radius: 0, amount });
   }
 }

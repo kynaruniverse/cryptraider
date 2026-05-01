@@ -30,8 +30,13 @@ function stoneFrame(inner, name = '') {
   const out = [];
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      if (x === 0 || x === W-1 || y === 0 || y === H-1) out.push(S);
-      else out.push(inner[(y-1) * IW + (x-1)]);
+      if (x === 0 || x === W-1 || y === 0 || y === H-1) {
+        out.push(S);
+      } else {
+        const val = inner[(y-1) * IW + (x-1)];
+        // If val is missing (undefined), push DIRT (D) instead of crashing
+        out.push(val !== undefined ? val : D); 
+      }
     }
   }
   return { width: W, height: H, map: out, name };
@@ -253,8 +258,8 @@ stoneFrame([
   D,D,D,D,D,D,D,D,D,
   D,D,D,C,D,D,D,D,D,
   D,D,D,D,D,D,D,D,D,
-  S,S,S,S,S,_,_,S,S,
-  _,_,_,_,_,_,_,_,_,
+  S,S,S,S,S,D,D,S,S, // Replaced _ with D
+  D,D,D,D,D,D,D,D,D, // Filled empty row
   D,D,D,D,D,D,D,D,D,
   D,D,D,D,X,D,D,D,D,
   D,D,D,D,D,D,D,D,D,

@@ -243,6 +243,12 @@ drawFromAtlas(key, x, y, size = T, offsetY = 0) {
       // 3. Draw the specific tile with logic
       const spriteKey = TILE_MAP[tile];
       if (spriteKey && tile !== TILE.PLAYER) {
+        // GHOST FIX: If this tile is currently falling/animating, 
+        // skip drawing the static version to prevent double-images.
+        if (meta && meta.falling) {
+          continue;
+        }
+
         // Priority 1: The Portal
         if (tile === TILE.PORTAL || tile === TILE.PORTAL_OPEN) {
           const active = (tile === TILE.PORTAL_OPEN) || (session && session.portalOpen);
