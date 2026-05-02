@@ -4,7 +4,9 @@
 // Fly:   direct 8-direction chase, ignores terrain
 // ============================================================
 
-import { TILE, ENEMY_MOVE_INTERVAL_MS, ENEMY_FLY_INTERVAL_MS, SCORE } from '../engine/constants.js';
+import { TILE, ENEMY_MOVE_INTERVAL_MS, ENEMY_FLY_INTERVAL_MS, SCORE, COLS, ROWS } from '../engine/constants.js';
+
+const MAX_CELLS = COLS * ROWS; // 187 for an 11×17 grid
 
 // ─────────────────────────────────────────────
 //  Base Enemy
@@ -72,8 +74,8 @@ export class Mummy extends Enemy {
   }
 
     // Pre-allocated static structures to prevent Garbage Collection stutters
-  static _queue = new Int16Array(512); // Stores x,y pairs
-  static _parentMap = new Int16Array(1024); // Stores where we came from to reconstruct path
+  static _queue     = new Int16Array(MAX_CELLS);     // one slot per grid cell
+  static _parentMap = new Int16Array(MAX_CELLS);     // one slot per grid cell
   static _dirs = [0, -1, 0, 1, -1, 0, 1, 0]; 
 
   _bfsStep(px, py) {
@@ -110,6 +112,9 @@ export class Mummy extends Enemy {
             last = step;
             step = Mummy._parentMap[step];
           }
+          // Reset shared buffers before returning so the next call starts clean.
+          Mummy._queue.fill(0, 0, tail);
+          Mummy._parentMap.fill(-1);
           return { x: last % cols, y: (last / cols) | 0 };
         }
 
@@ -120,11 +125,11 @@ export class Mummy extends Enemy {
       }
       // SAFETY: If the search space gets too large or unreachable, 
       // stop the search to prevent the browser from freezing.
-      if (tail > 400 || head > 1000) break; 
+      if (tail >= MAX_CELLS || head >= MAX_CELLS) break;
     }
 
-    // Clean up memory before exiting so the next frame starts fresh
-    Mummy._queue.fill(0);
+    // Reset only the portion of the queue that was actually used.
+    Mummy._queue.fill(0, 0, tail);
     return null;
 
   }
@@ -187,11 +192,18 @@ export class EnemyManager {
   }
 
   update(dt, playerX, playerY) {
+    let hasDeadEnemy = false;
     for (const e of this.enemies) {
-      if (e.alive) e.update(dt, playerX, playerY);
+      if (e.alive) {
+        e.update(dt, playerX, playerY);
+      } else {
+        hasDeadEnemy = true;
+      }
     }
-    // Prune dead enemies
-    this.enemies = this.enemies.filter(e => e.alive);
+    // Prune only when necessary — avoids allocating a new array every tick.
+    if (hasDeadEnemy) {
+      this.enemies = this.enemies.filter(e => e.alive);
+    }
   }
 
   killAt(x, y) {
@@ -206,6 +218,6 @@ export class EnemyManager {
 
 
   getAlive() {
-    return this.enemies.filter(e => e.alive);
+    return this.enemies;
   }
 }

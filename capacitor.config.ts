@@ -3,7 +3,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'com.cryptraider.game',
   appName: 'Crypt Raider',
-  webDir: '.',
+  webDir: 'dist',
   server: {
     androidScheme: 'https'
   },
@@ -11,7 +11,7 @@ const config: CapacitorConfig = {
     backgroundColor: '#050200',
     allowMixedContent: false,
     captureInput: true,
-    webContentsDebuggingEnabled: true // Enabled for your first build test
+    webContentsDebuggingEnabled: false
   },
   ios: {
     contentInset: 'always',

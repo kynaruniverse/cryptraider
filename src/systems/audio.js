@@ -5,11 +5,15 @@
 
 export class AudioSystem {
   constructor() {
-    this._ctx     = null;
-    this._enabled = true;
-    this._master  = null;
-    this._bgNode  = null;
-    this._bgGain  = null;
+    this._ctx       = null;
+    this._enabled   = true;
+    this._master    = null;
+    this._bgNode    = null;
+    this._bgGain    = null;
+    this._bgActive  = false;
+    this._bgNoteIdx = 0;
+    this._bgTimer   = null;
+    this._noiseBuffer = null;
   }
 
   _getCtx() {
@@ -23,6 +27,12 @@ export class AudioSystem {
   }
 
   setEnabled(v) { this._enabled = v; }
+
+  /** Unlocks the AudioContext after a user gesture. Safe to call repeatedly. */
+  unlock() {
+    const ctx = this._getCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+  }
 
   // ── Generic tone helper ────────────────────────────────────
   _tone(freq, type = 'square', duration = 0.1, vol = 0.3, delay = 0) {
@@ -44,21 +54,35 @@ export class AudioSystem {
     osc.stop(ctx.currentTime + delay + duration);
   }
 
-  _noise(duration = 0.15, vol = 0.2) {
-    if (!this._enabled) return;
-    const ctx    = this._getCtx();
-    const size   = ctx.sampleRate * duration;
+  // Pre-allocated 0.5 s of white noise — reused by all _noise() calls to avoid GC spikes.
+  _ensureNoiseBuffer() {
+    const ctx = this._getCtx();
+    // Regenerate only if context changed (e.g. after a suspend/resume cycle).
+    if (this._noiseBuffer && this._noiseBuffer._ctx === ctx) return this._noiseBuffer;
+    const size   = Math.ceil(ctx.sampleRate * 0.5);
     const buffer = ctx.createBuffer(1, size, ctx.sampleRate);
     const data   = buffer.getChannelData(0);
     for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
-    const src  = ctx.createBufferSource();
-    const gain = ctx.createGain();
+    buffer._ctx  = ctx; // tag for identity check
+    this._noiseBuffer = buffer;
+    return buffer;
+  }
+
+  _noise(duration = 0.15, vol = 0.2) {
+    if (!this._enabled) return;
+    const ctx    = this._getCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const buffer = this._ensureNoiseBuffer();
+    const src    = ctx.createBufferSource();
+    const gain   = ctx.createGain();
     src.buffer = buffer;
+    src.loop   = true; // loop the shared buffer; stopped by gain envelope
     gain.gain.setValueAtTime(vol, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
     src.connect(gain);
     gain.connect(this._master);
     src.start();
+    src.stop(ctx.currentTime + duration);
   }
 
   // ── Named sound effects ────────────────────────────────────

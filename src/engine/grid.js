@@ -44,10 +44,9 @@ export class Grid {
     this.rows = rows;
     const size = cols * rows;
 
-    this.cells = new Uint8Array(size); 
-    // Initialize with empty objects to prevent null-pointer exceptions in systems
-    this.meta  = Array.from({ length: size }, () => ({}));
-
+    this.cells = new Uint8Array(size);
+    // null sentinel — avoids allocating a live object for every empty cell.
+    this.meta  = new Array(size).fill(null);
     
     // AAA Feature: Dirty tracking for rendering optimization
     this.dirtyCells = new Set();
@@ -77,11 +76,12 @@ export class Grid {
     }
   }
 
-  getMeta(x, y)    { return this.inBounds(x, y) ? this.meta[this.idx(x, y)] : null; }
-  setMeta(x, y, v) { 
+  getMeta(x, y)    { return this.inBounds(x, y) ? (this.meta[this.idx(x, y)] ?? null) : null; }
+  setMeta(x, y, v) {
     if (this.inBounds(x, y)) {
-      this.meta[this.idx(x, y)] = v;
-      this.dirtyCells.add(this.idx(x, y));
+      const i = this.idx(x, y);
+      this.meta[i] = v;
+      this.dirtyCells.add(i);
     }
   }
 
@@ -89,7 +89,7 @@ export class Grid {
     if (!this.inBounds(x, y)) return;
     const i = this.idx(x, y);
     this.cells[i] = TILE.EMPTY;
-    this.meta[i]  = {}; // Reset to empty object
+    this.meta[i]  = null;
     this.dirtyCells.add(i);
   }
 
@@ -108,9 +108,10 @@ export class Grid {
   
   /** Moves an entity and its metadata atomically */
   moveEntity(fx, fy, tx, ty) {
-    const type = this.get(fx, fy);
-    // Use structuredClone or spread to ensure we aren't passing by reference
-    const meta = { ...(this.getMeta(fx, fy) || {}) };
+    const type    = this.get(fx, fy);
+    const srcMeta = this.getMeta(fx, fy);
+    // Shallow-clone only when there is meta to clone; otherwise start fresh.
+    const meta    = srcMeta ? { ...srcMeta } : {};
     
     // Auto-detect vertical movement
     if (ty > fy) {
@@ -187,11 +188,13 @@ export class Grid {
   }
 
   serialize() {
+    // Shallow-clone each meta entry; null cells serialise as null.
+    const metaClone = this.meta.map(m => m ? { ...m } : null);
     return {
-      cols: this.cols,
-      rows: this.rows,
+      cols:  this.cols,
+      rows:  this.rows,
       cells: Array.from(this.cells),
-      meta: JSON.parse(JSON.stringify(this.meta)) // Deep clone
+      meta:  metaClone,
     };
   }
 
@@ -218,7 +221,7 @@ export class Grid {
     const mapData = level.map || level; 
     
     this.cells = new Uint8Array(size);
-    this.meta = Array.from({ length: size }, () => ({}));
+    this.meta  = new Array(size).fill(null);
     
     for (let i = 0; i < size; i++) {
       // Fallback to DIRT (1) if the level data is truncated to prevent void-crashes
@@ -228,7 +231,10 @@ export class Grid {
     
     this.fullClearRequested = true;
     this.dirtyCells.clear();
-    console.log(`Grid loaded: ${this.cols}x${this.rows}, Name: ${level.name || 'Unknown'}`);
+    // console.log only in explicit debug builds — not in production.
+    if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
+      console.log(`Grid loaded: ${this.cols}x${this.rows}, Name: ${level.name || 'Unknown'}`);
+    }
   }
 
 }

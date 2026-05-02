@@ -12,14 +12,12 @@ import { AudioSystem }     from './systems/audio.js';
 import { STATE, TILE_SIZE, COLS, ROWS } from './engine/constants.js';
 import { generateCode, validateCode } from './systems/levelCodes.js';
 
-// Expose level codes globally for renderer
-window._CR_levelCodes = { generateCode, validateCode };
-
 // ── Globals ───────────────────────────────────────────────
 let renderer, session, input, audio, events;
 let uiState = STATE.MENU;
 let _hintShown = false;
 let lastTime = 0;
+let _keydownHandler = null; // tracked for safe teardown
 
 // ── Canvas setup — portrait fill ─────────────────────────
 const canvas = document.getElementById('gameCanvas');
@@ -63,7 +61,7 @@ async function boot() {
   const loadScreen = document.getElementById('loadScreen');
 
   // 1. Initialize Core Infrastructure
-  events = new EventBus();
+  events = new EventBus(typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE);
   audio  = new AudioSystem();
   
   // 2. Load Assets
@@ -75,7 +73,7 @@ async function boot() {
   input    = new InputSystem(canvas, () => uiState);
   // Pass 'input' into the session so the player can access it
   session  = new GameSession(events, audio, input); 
-  session._codeInput = '';
+  session.codeInput = '';
 
   // 4. Setup
   resizeCanvas();
@@ -86,16 +84,19 @@ async function boot() {
   if (loadScreen) loadScreen.style.display = 'none';
   canvas.style.display = 'block';
 
+  _bootComplete = true;
   requestAnimationFrame(loop);
 }
 
 // ── Game loop ─────────────────────────────────────────────
+let _bootComplete = false;
+
 function loop(ts) {
+  if (!_bootComplete) { requestAnimationFrame(loop); return; }
+
   const dt = Math.min(ts - lastTime, 50);
   lastTime = ts;
 
-  // We only poll the ACTION (bombs/pauses) here. 
-  // The DIRECTION is now polled inside player.js to prevent input dropping.
   const action = input.pollAction();
 
   _handleAction(action);
@@ -137,10 +138,8 @@ function _handleAction(action) {
 }
 
 function _handleConfirm() {
-  // Mobile audio context unlock
-  if (audio._getCtx().state === 'suspended') {
-      audio._getCtx().resume();
-  }
+  // Mobile audio context unlock via public API
+  audio.unlock();
 
   switch (uiState) {
     case STATE.MENU: {
@@ -201,16 +200,15 @@ function _handleConfirm() {
       break;
       
     case STATE.CODE_ENTRY: {
-      const code = session._codeInput || '';
+      const code = session.codeInput || '';
       if (code.length === 6) {
         const result = validateCode(code);
-        if (result) {
+        if (result !== null) {
           audio.codeSuccess();
-          session.jumpToLevel(result.level - 1);
-          uiState = STATE.STORY;
+          session.jumpToLevel(result.index);
         } else {
           audio.codeFail();
-          session._codeInput = '';
+          session.codeInput = '';
         }
       } else {
         uiState = STATE.MENU;
@@ -251,26 +249,28 @@ function _bindSessionEvents() {
   
   // Feedback sounds
   events.on('collect',      () => audio.collect());
-  events.on('explosion',    () => { if(renderer) renderer.applyShake(10); });
+  events.on('explosion',    ({ amount }) => { if (renderer) renderer.applyShake(amount ?? 10); });
+  events.on('camera_shake', ({ amount }) => { if (renderer) renderer.applyShake(amount); });
 }
 
 function _bindInputToUI() {
-  // Global keyboard listener for Code Entry and Pause
-  window.addEventListener('keydown', (e) => {
+  // Global keyboard listener for Code Entry and Pause — stored for future teardown
+  _keydownHandler = (e) => {
     if (e.code === 'Enter') _handleConfirm();
     if (e.code === 'Escape') input.triggerAction('pause');
-    
+
     if (uiState === STATE.CODE_ENTRY && session) {
-      const code = session._codeInput || '';
+      const code = session.codeInput || '';
       if (e.key.match(/^[A-Za-z0-9]$/) && code.length < 6) {
-        session._codeInput = (code + e.key.toUpperCase()).slice(0, 6);
+        session.codeInput = (code + e.key.toUpperCase()).slice(0, 6);
         e.preventDefault();
       } else if (e.code === 'Backspace' && code.length > 0) {
-        session._codeInput = code.slice(0, -1);
+        session.codeInput = code.slice(0, -1);
         e.preventDefault();
       }
     }
-  });
+  };
+  window.addEventListener('keydown', _keydownHandler);
 
   // Ensure BGM starts on user interaction
   canvas.addEventListener('pointerdown', () => {

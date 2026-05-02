@@ -6,9 +6,13 @@ import { TILE, GRAVITY_INTERVAL_MS } from './constants.js';
 
 export class Physics {
   constructor(grid, eventBus) {
-    this.grid     = grid;
-    this.events   = eventBus;
-    this._elapsed = 0;
+    this.grid      = grid;
+    this.events    = eventBus;
+    this._elapsed  = 0;
+    // Pending deferred actions — drained each update() instead of using setTimeout.
+    // Each entry: { delay: ms remaining, fn: () => void }
+    this._pending        = [];
+    this._processedSet   = new Set(); // pre-allocated; cleared each gravity tick
 
     // Define "Rules" for how tiles respond to impact
     this.impactRules = {
@@ -26,11 +30,24 @@ export class Physics {
   }
 
   update(dt) {
+    // Drain pending deferred actions (replaces setTimeout)
+    for (let i = this._pending.length - 1; i >= 0; i--) {
+      this._pending[i].delay -= dt;
+      if (this._pending[i].delay <= 0) {
+        this._pending[i].fn();
+        this._pending.splice(i, 1);
+      }
+    }
+
     this._elapsed += dt;
     if (this._elapsed >= GRAVITY_INTERVAL_MS) {
       this._elapsed = 0;
       this._tickGravity();
     }
+  }
+
+  _defer(fn, delayMs) {
+    this._pending.push({ delay: delayMs, fn });
   }
 
   /**
@@ -39,7 +56,8 @@ export class Physics {
    */
   _tickGravity() {
     const { rows, cols } = this.grid;
-    const processedThisTick = new Set();
+    const processedThisTick = this._processedSet;
+    processedThisTick.clear();
 
     for (let y = rows - 1; y >= 0; y--) {
       for (let x = 0; x < cols; x++) {
@@ -151,8 +169,8 @@ export class Physics {
         // Chain Reaction
         if (tile === TILE.DYNAMITE) {
           this.grid.clear(ex, ey);
-          setTimeout(() => { 
-            if (this.grid === currentGrid) this.explode(ex, ey, 2); 
+          this._defer(() => {
+            if (this.grid === currentGrid) this.explode(ex, ey, 2);
           }, 100);
         }
 
@@ -161,8 +179,8 @@ export class Physics {
         // Visualization
         this.grid.set(ex, ey, TILE.EXPLOSION);
         this.grid.setMeta(ex, ey, { ttl: 500 });
-        
-        setTimeout(() => {
+
+        this._defer(() => {
           if (this.grid === currentGrid && this.grid.get(ex, ey) === TILE.EXPLOSION) {
             this.grid.clear(ex, ey);
           }
@@ -175,6 +193,11 @@ export class Physics {
   }
 
   shake(amount = 10) {
-    this.events.emit('explosion', { x: -1, y: -1, radius: 0, amount });
+    this.events.emit('camera_shake', { amount });
+  }
+
+  /** Cancel all pending deferred actions (call before discarding this instance). */
+  destroy() {
+    this._pending.length = 0;
   }
 }

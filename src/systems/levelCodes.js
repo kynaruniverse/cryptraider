@@ -4,7 +4,7 @@
 // Format: 6-character uppercase code
 // ============================================================
 
-import { CODE_SALT } from '../engine/constants.js';
+import { CODE_SALT, CONFIG } from '../engine/constants.js';
 
 /**
  * Generates a deterministic 6-character code for a given level index.
@@ -54,12 +54,11 @@ export function validateCode(input) {
   if (clean.length !== 6) return -1;
 
 
-  // Brute force check 100 levels (negligible CPU cost)
-  for (let lvl = 0; lvl < 100; lvl++) {
-    if (generateCode(lvl) === clean) return lvl;
+  for (let lvl = 0; lvl < CONFIG.TOTAL_LEVELS; lvl++) {
+    if (generateCode(lvl) === clean) return { level: lvl + 1, index: lvl };
   }
 
-  return -1; // Invalid code
+  return null; // Invalid code
 }
 
 /**
@@ -67,11 +66,8 @@ export function validateCode(input) {
  * Useful for debugging or providing a 'password' sheet.
  */
 export function getAllCodes() {
-  return Array.from({ length: 100 }, (_, i) => ({
+  return Array.from({ length: CONFIG.TOTAL_LEVELS }, (_, i) => ({
     level: i + 1,
-    code: generateCode(i)
+    code:  generateCode(i),
   }));
 }
-
-// Expose to window for the Renderer's Win Screen access
-window._CR_levelCodes = { generateCode, validateCode };

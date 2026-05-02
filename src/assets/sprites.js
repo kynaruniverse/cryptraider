@@ -1,27 +1,31 @@
 // ============================================================
-// CRYPT RAIDER v2 — EVOLVED SVG Sprite Engine
-// ============================================================
-//
-// Improvements:
-// 1. FIXED: Coordinate mapping for the Atlas (Map now visible)
-// 2. EVOLVED: Dynamic SVG Filters for bloom and beveling
-// 3. IMPROVED: High-speed Base64 encoding for mobile performance
-// 4. ADDED: Precise frame-by-frame explosion rendering
+// CRYPT RAIDER v2 — SVG Sprite Engine
+// BUG FIX: Each sprite now gets a unique namespace prefix for
+// all internal SVG IDs (gradients, filters).
+// When multiple SVGs are decoded as <img> data-URIs and drawn
+// to the same canvas, the browser resolves url(#id) references
+// against the *document* — so shared IDs like "glow", "dg",
+// "sg" across sprites collide, causing wrong or transparent fills.
+// Solution: every sprite scopes its IDs with a unique prefix.
 // ============================================================
 
 const S = 32; // Sprite base size
 
-/**
- * Standardized SVG Wrapper
- * Includes global filters used by many sprites for depth and glow
- */
-function svg(content, extra = '') {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}" viewBox="0 0 ${S} ${S}" ${extra}>
-    <defs>
-      <filter id="glow"><feGaussianBlur stdDeviation="1.5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-      <filter id="bevel"><feGaussianBlur stdDeviation="0.5" in="SourceAlpha" result="b"/><feSpecularLighting surfaceScale="2" specularConstant="0.75" specularExponent="20" lighting-color="#ffffff" in="b" result="s"><fePointLight x="-20" y="-20" z="50"/></feSpecularLighting><feComposite in="s" in2="SourceAlpha" operator="in" result="s"/><feComposite in="SourceGraphic" in2="s" operator="arithmetic" k1="0" k2="1" k3="1" k4="0"/></filter>
-    </defs>
-    ${content}
+// ── Unique-ID scoped SVG builder ─────────────────────────────
+// `ns` = namespace string unique per sprite (e.g. "dirt", "stone").
+// Every url(#id) reference inside the SVG is automatically prefixed.
+function svgNS(ns, content) {
+  // Replace bare url(#X) with url(#ns_X) inside the content string.
+  const scoped = content.replace(/url\(#([^)]+)\)/g, `url(#${ns}_$1)`);
+  // Also replace bare id="X" with id="ns_X".
+  const ids    = scoped.replace(/\bid="([^"]+)"/g, `id="${ns}_$1"`);
+  // Standard filters, also namespaced.
+  const glow  = `<filter id="${ns}_glow"><feGaussianBlur stdDeviation="1.5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  const bevel = `<filter id="${ns}_bevel"><feGaussianBlur stdDeviation="0.5" in="SourceAlpha" result="b"/><feSpecularLighting surfaceScale="2" specularConstant="0.75" specularExponent="20" lighting-color="#ffffff" in="b" result="s"><fePointLight x="-20" y="-20" z="50"/></feSpecularLighting><feComposite in="s" in2="SourceAlpha" operator="in" result="s"/><feComposite in="SourceGraphic" in2="s" operator="arithmetic" k1="0" k2="1" k3="1" k4="0"/></filter>`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}" viewBox="0 0 ${S} ${S}">
+    <defs>${glow}${bevel}</defs>
+    ${ids}
   </svg>`;
 }
 
@@ -29,7 +33,7 @@ function svg(content, extra = '') {
 //  TERRAIN TILES
 // ─────────────────────────────────────────────
 
-export const SVG_EMPTY = svg(`
+export const SVG_EMPTY = svgNS('empty', `
   <defs>
     <radialGradient id="ebg" cx="50%" cy="50%" r="70%">
       <stop offset="0%" stop-color="#1a0c04"/>
@@ -41,7 +45,7 @@ export const SVG_EMPTY = svg(`
   <line x1="32" y1="0" x2="0" y2="32" stroke="#0d0600" stroke-width="0.5" opacity="0.3"/>
 `);
 
-export const SVG_DIRT = svg(`
+export const SVG_DIRT = svgNS('dirt', `
   <defs>
     <linearGradient id="dg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#C8904A"/>
@@ -55,7 +59,7 @@ export const SVG_DIRT = svg(`
   <rect x="0" y="0" width="32" height="2" fill="#D8A060" opacity="0.4"/>
 `);
 
-export const SVG_STONE = svg(`
+export const SVG_STONE = svgNS('stone', `
   <defs>
     <linearGradient id="sg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#5A5A70"/>
@@ -69,7 +73,7 @@ export const SVG_STONE = svg(`
   <rect x="0" y="0" width="32" height="1.5" fill="#888898" opacity="0.6"/>
 `);
 
-export const SVG_GRAVEL = svg(`
+export const SVG_GRAVEL = svgNS('gravel', `
   <defs>
     <radialGradient id="gg" cx="50%" cy="50%" r="70%">
       <stop offset="0%" stop-color="#9A8060"/>
@@ -83,7 +87,7 @@ export const SVG_GRAVEL = svg(`
   <circle cx="8" cy="27" r="4" fill="#6A5840" stroke="#3A2818" stroke-width="0.8"/>
 `);
 
-export const SVG_SAND = svg(`
+export const SVG_SAND = svgNS('sand', `
   <defs>
     <linearGradient id="sandg" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stop-color="#E0C070"/>
@@ -95,7 +99,7 @@ export const SVG_SAND = svg(`
   <circle cx="4" cy="9" r="0.8" fill="#D4AA50" opacity="0.7"/>
 `);
 
-export const SVG_LADDER = svg(`
+export const SVG_LADDER = svgNS('ladder', `
   <rect width="32" height="32" fill="#0d0600"/>
   <rect x="5" y="0" width="4" height="32" fill="#9A7418" rx="1.5"/>
   <rect x="23" y="0" width="4" height="32" fill="#9A7418" rx="1.5"/>
@@ -109,7 +113,7 @@ export const SVG_LADDER = svg(`
 //  INTERACTIVE OBJECTS
 // ─────────────────────────────────────────────
 
-export const SVG_BOULDER = svg(`
+export const SVG_BOULDER = svgNS('boulder', `
   <defs>
     <radialGradient id="bolg" cx="35%" cy="28%" r="65%">
       <stop offset="0%" stop-color="#c0c0cc"/>
@@ -122,7 +126,7 @@ export const SVG_BOULDER = svg(`
   <path d="M6 24 Q12 27 16 25 Q21 23 26 26" stroke="#404048" stroke-width="1.2" fill="none" opacity="0.6"/>
 `);
 
-export const SVG_CRYSTAL = svg(`
+export const SVG_CRYSTAL = svgNS('crystal', `
   <defs>
     <linearGradient id="crg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#E0FFFF"/>
@@ -135,7 +139,7 @@ export const SVG_CRYSTAL = svg(`
   <circle cx="16" cy="14" r="1" fill="white"><animate attributeName="opacity" values="0.2;1;0.2" dur="1.5s" repeatCount="indefinite"/></circle>
 `);
 
-export const SVG_GEM = svg(`
+export const SVG_GEM = svgNS('gem', `
   <defs>
     <linearGradient id="gemg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#FF88CC"/>
@@ -147,7 +151,7 @@ export const SVG_GEM = svg(`
   <polygon points="16,5 22,10 16,8" fill="white" opacity="0.45"/>
 `);
 
-export const SVG_KEY = svg(`
+export const SVG_KEY = svgNS('key', `
   <defs>
     <radialGradient id="keytop" cx="40%" cy="35%" r="60%">
       <stop offset="0%" stop-color="#FFE060"/>
@@ -160,7 +164,7 @@ export const SVG_KEY = svg(`
   <rect x="24" y="15" width="3" height="4" rx="0.5" fill="#FFD700" stroke="#AA6600" stroke-width="0.8"/>
 `);
 
-export const SVG_DOOR_CLOSED = svg(`
+export const SVG_DOOR_CLOSED = svgNS('door_closed', `
   <defs>
     <linearGradient id="doorg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#7A4A20"/>
@@ -171,25 +175,25 @@ export const SVG_DOOR_CLOSED = svg(`
   <circle cx="16" cy="16" r="2" fill="#FFD700" stroke="#AA8800" stroke-width="0.8"/>
 `);
 
-export const SVG_DOOR_OPEN = svg(`
+export const SVG_DOOR_OPEN = svgNS('door_open', `
   <rect width="32" height="32" fill="#0d0600"/>
   <rect x="2" y="1" width="4" height="30" fill="#3A2010" stroke="#1a0d00" stroke-width="1"/>
   <rect x="26" y="1" width="4" height="30" fill="#3A2010" stroke="#1a0d00" stroke-width="1"/>
 `);
 
-export const SVG_DYNAMITE = svg(`
+export const SVG_DYNAMITE = svgNS('dynamite', `
   <rect x="11" y="3" width="10" height="20" rx="2" fill="#CC2200" stroke="#881100" stroke-width="1" filter="url(#bevel)"/>
   <line x1="16" y1="3" x2="16" y2="0" stroke="#AA8844" stroke-width="1.5"/>
-  <circle cx="16" cy="0" r="2" fill="#FFDD44"><animate attributeName="r" values="1.5;2.5;1.5" dur="0.2s" repeatCount="indefinite" /></circle>
+  <circle cx="16" cy="0" r="2" fill="#FFDD44"><animate attributeName="r" values="1.5;2.5;1.5" dur="0.2s" repeatCount="indefinite"/></circle>
   <text x="16" y="28" font-size="5" fill="#FFDD44" text-anchor="middle" font-family="monospace" font-weight="bold">TNT</text>
 `);
 
-export const SVG_PORTAL_INACTIVE = svg(`
+export const SVG_PORTAL_INACTIVE = svgNS('portal_inactive', `
   <ellipse cx="16" cy="16" rx="13" ry="14" fill="#1a1a3a" stroke="#2a2a5a" stroke-width="1.5"/>
   <ellipse cx="16" cy="16" rx="9" ry="10" fill="none" stroke="#3a3a6a" stroke-width="1"/>
 `);
 
-export const SVG_PORTAL_ACTIVE = svg(`
+export const SVG_PORTAL_ACTIVE = svgNS('portal_active', `
   <defs>
     <radialGradient id="pag" cx="50%" cy="50%" r="50%">
       <stop offset="0%" stop-color="#00FFFF"/>
@@ -200,12 +204,12 @@ export const SVG_PORTAL_ACTIVE = svg(`
   <ellipse cx="16" cy="16" rx="14" ry="15" fill="url(#pag)" stroke="#88FFFF" stroke-width="1.5"/>
 `);
 
-export const SVG_MACHINE_INACTIVE = svg(`
+export const SVG_MACHINE_INACTIVE = svgNS('machine_inactive', `
   <rect x="2" y="4" width="28" height="24" rx="3" fill="#504838" stroke="#383020" stroke-width="1.5"/>
   <rect x="5" y="7" width="22" height="8" rx="2" fill="#1a1410"/>
 `);
 
-export const SVG_MACHINE_ACTIVE = svg(`
+export const SVG_MACHINE_ACTIVE = svgNS('machine_active', `
   <rect x="2" y="4" width="28" height="24" rx="3" fill="#705830" stroke="#AA8840" stroke-width="1.5" filter="url(#glow)"/>
   <circle cx="9" cy="22" r="3" fill="#FFAA00"/>
   <circle cx="16" cy="22" r="3" fill="#FFAA00"/>
@@ -226,23 +230,23 @@ function playerBase() {
 `;
 }
 
-export const SVG_PLAYER_DOWN = svg(`${playerBase()}<circle cx="13" cy="12" r="1.2" fill="#1a0800"/><circle cx="19" cy="12" r="1.2" fill="#1a0800"/>`);
-export const SVG_PLAYER_UP = svg(`${playerBase()}<rect x="10" y="9" width="12" height="2" fill="#8A6010"/>`);
-export const SVG_PLAYER_LEFT = svg(`${playerBase()}<circle cx="13" cy="12" r="1.2" fill="#1a0800"/>`);
-export const SVG_PLAYER_RIGHT = svg(`${playerBase()}<circle cx="19" cy="12" r="1.2" fill="#1a0800"/>`);
+export const SVG_PLAYER_DOWN  = svgNS('player_down',  `${playerBase()}<circle cx="13" cy="12" r="1.2" fill="#1a0800"/><circle cx="19" cy="12" r="1.2" fill="#1a0800"/>`);
+export const SVG_PLAYER_UP    = svgNS('player_up',    `${playerBase()}<rect x="10" y="9" width="12" height="2" fill="#8A6010"/>`);
+export const SVG_PLAYER_LEFT  = svgNS('player_left',  `${playerBase()}<circle cx="13" cy="12" r="1.2" fill="#1a0800"/>`);
+export const SVG_PLAYER_RIGHT = svgNS('player_right', `${playerBase()}<circle cx="19" cy="12" r="1.2" fill="#1a0800"/>`);
 
 // ─────────────────────────────────────────────
 //  ENEMIES
 // ─────────────────────────────────────────────
 
-export const SVG_MUMMY = svg(`
+export const SVG_MUMMY = svgNS('mummy', `
   <rect x="9" y="14" width="14" height="15" rx="3" fill="#EFEBE9"/>
   <circle cx="16" cy="9" r="8" fill="#EFEBE9"/>
   <circle cx="12" cy="9" r="2.5" fill="#FF0000" filter="url(#glow)"/>
   <circle cx="20" cy="9" r="2.5" fill="#FF0000" filter="url(#glow)"/>
 `);
 
-export const SVG_FLY = svg(`
+export const SVG_FLY = svgNS('fly', `
   <ellipse cx="8" cy="14" rx="7" ry="4" fill="#AACCFF" opacity="0.6"/>
   <ellipse cx="24" cy="14" rx="7" ry="4" fill="#AACCFF" opacity="0.6"/>
   <ellipse cx="16" cy="18" rx="6" ry="8" fill="#88AA44" stroke="#112208" stroke-width="1"/>
@@ -253,11 +257,11 @@ export const SVG_FLY = svg(`
 // ─────────────────────────────────────────────
 
 function explosionFrame(f) {
-  const r = 4 + f * 1.8;
+  const r  = 4 + f * 1.8;
   const op = Math.max(0, 1 - f / 8);
   const colors = ['#FFFF88','#FFDD00','#FF8800','#FF4400','#CC2200','#882200','#441100','#220800'];
   const c = colors[Math.min(f, 7)];
-  return svg(`<circle cx="16" cy="16" r="${r}" fill="${c}" opacity="${op}"/>`);
+  return svgNS(`explosion${f}`, `<circle cx="16" cy="16" r="${r}" fill="${c}" opacity="${op}"/>`);
 }
 export const SVG_EXPLOSION = [0,1,2,3,4,5,6,7].map(explosionFrame);
 
@@ -268,69 +272,80 @@ export const SVG_EXPLOSION = [0,1,2,3,4,5,6,7].map(explosionFrame);
 function svgToImage(svgStr) {
   return new Promise((resolve) => {
     const img = new Image();
-    const base64 = btoa(unescape(encodeURIComponent(svgStr)));
-    img.onload = () => resolve(img);
+    // Use encodeURIComponent-based encoding — more robust than btoa for unicode SVG content.
+    img.onload  = () => resolve(img);
     img.onerror = () => resolve(null);
-    img.src = `data:image/svg+xml;base64,${base64}`;
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgStr)}`;
   });
 }
 
 export async function loadAllSprites() {
   const defs = {
-    empty: SVG_EMPTY, dirt: SVG_DIRT, stone: SVG_STONE, gravel: SVG_GRAVEL,
-    sand: SVG_SAND, ladder: SVG_LADDER, boulder: SVG_BOULDER, crystal: SVG_CRYSTAL,
-    gem: SVG_GEM, key: SVG_KEY, door_closed: SVG_DOOR_CLOSED, door_open: SVG_DOOR_OPEN,
-    dynamite: SVG_DYNAMITE, portal_inactive: SVG_PORTAL_INACTIVE, portal_active: SVG_PORTAL_ACTIVE,
-    machine_inactive: SVG_MACHINE_INACTIVE, machine_active: SVG_MACHINE_ACTIVE,
-    player_down: SVG_PLAYER_DOWN, player_up: SVG_PLAYER_UP, 
-    player_left: SVG_PLAYER_LEFT, player_right: SVG_PLAYER_RIGHT,
-    mummy: SVG_MUMMY, fly: SVG_FLY,
+    empty:            SVG_EMPTY,
+    dirt:             SVG_DIRT,
+    stone:            SVG_STONE,
+    gravel:           SVG_GRAVEL,
+    sand:             SVG_SAND,
+    ladder:           SVG_LADDER,
+    boulder:          SVG_BOULDER,
+    crystal:          SVG_CRYSTAL,
+    gem:              SVG_GEM,
+    key:              SVG_KEY,
+    door_closed:      SVG_DOOR_CLOSED,
+    door_open:        SVG_DOOR_OPEN,
+    dynamite:         SVG_DYNAMITE,
+    portal_inactive:  SVG_PORTAL_INACTIVE,
+    portal_active:    SVG_PORTAL_ACTIVE,
+    machine_inactive: SVG_MACHINE_INACTIVE,
+    machine_active:   SVG_MACHINE_ACTIVE,
+    player_down:      SVG_PLAYER_DOWN,
+    player_up:        SVG_PLAYER_UP,
+    player_left:      SVG_PLAYER_LEFT,
+    player_right:     SVG_PLAYER_RIGHT,
+    mummy:            SVG_MUMMY,
+    fly:              SVG_FLY,
   };
 
   const allEntries = [...Object.entries(defs)];
-  SVG_EXPLOSION.forEach((svg, i) => allEntries.push([`explosion_${i}`, svg]));
+  SVG_EXPLOSION.forEach((svgStr, i) => allEntries.push([`explosion_${i}`, svgStr]));
 
   const totalSprites = allEntries.length;
-  const cols = Math.ceil(Math.sqrt(totalSprites));
-  
+  const cols         = Math.ceil(Math.sqrt(totalSprites));
+
   // Create the Atlas Canvas
-  const atlasCanvas = document.createElement('canvas');
-  atlasCanvas.width = cols * S;
-  atlasCanvas.height = Math.ceil(totalSprites / cols) * S;
-  const atlasCtx = atlasCanvas.getContext('2d');
-  
-  const coords = {}; 
+  const atlasCanvas    = document.createElement('canvas');
+  atlasCanvas.width    = cols * S;
+  atlasCanvas.height   = Math.ceil(totalSprites / cols) * S;
+  const atlasCtx       = atlasCanvas.getContext('2d');
+
+  const coords       = {};
   const finalSprites = {};
 
+  // Parallel decode — all SVG→Image conversions fire simultaneously (Fix 9).
+  const images = await Promise.all(allEntries.map(([, svgStr]) => svgToImage(svgStr)));
+
   for (let i = 0; i < allEntries.length; i++) {
-    const [key, svgStr] = allEntries[i];
-    const img = await svgToImage(svgStr);
-    
-    if (img) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = col * S;
-      const y = row * S;
-      
-      // DRAW the image to the atlas so it's not just a black void
-      atlasCtx.drawImage(img, x, y);
-      
-      // SAVE the coordinates so the renderer knows where the 'dirt' is
-      coords[key] = { x, y }; 
-      
-      // Individual canvas support for actors
-      const canv = document.createElement('canvas');
-      canv.width = S; canv.height = S;
-      canv.getContext('2d').drawImage(img, 0, 0);
-      finalSprites[key] = canv;
+    const [key] = allEntries[i];
+    const img   = images[i];
+    if (!img) {
+      console.warn(`[Sprites] Failed to load sprite: ${key}`);
+      continue;
     }
+
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x   = col * S;
+    const y   = row * S;
+
+    atlasCtx.drawImage(img, x, y);
+    coords[key] = { x, y };
+
+    const canv = document.createElement('canvas');
+    canv.width  = S;
+    canv.height = S;
+    canv.getContext('2d').drawImage(img, 0, 0);
+    finalSprites[key] = canv;
   }
 
-  // Return everything the renderer needs
-  return {
-    ...finalSprites,
-    atlas: atlasCanvas,
-    coords: coords,
-    S: S
-  };
+  return { ...finalSprites, atlas: atlasCanvas, coords, S };
 }

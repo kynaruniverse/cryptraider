@@ -39,10 +39,6 @@ export class Renderer {
     this.sprites = sprites;
     
     this.updateLayout();
-    // AAA Feature: Offscreen Buffer for static layers
-    this.bgCanvas = document.createElement('canvas');
-    this.bgCtx    = this.bgCanvas.getContext('2d', { alpha: false });
-    
     this._frame  = 0;
     this._shake  = 0;
     // Dynamic offset based on screen height to prevent notch-clipping
@@ -107,33 +103,27 @@ export class Renderer {
   render(gameState, session, input) {
     this.tick();
     const ctx = this.ctx;
-    
+
+    // Save before any shake translate so the transform is always fully reset.
+    ctx.save();
+
     if (this._shake > 0.1) {
       const sx = (Math.random() - 0.5) * this._shake;
       const sy = (Math.random() - 0.5) * this._shake;
       ctx.translate(sx, sy);
       this._shake *= 0.85;
     }
-    
+
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-    // ALWAYS draw the game world if we are in a game-related state
-    const isIngame = [STATE.PLAYING, STATE.PAUSED, STATE.LEVEL_START, STATE.STORY].includes(gameState);
-    if (isIngame && session && session.grid) {
-      this._renderGame(session); 
-    }
-
     switch (gameState) {
-      // Remove this case from the switch since we handle it above now
-      // case STATE.PLAYING: this._renderGame(session); break; 
-      case STATE.MENU:        this._renderMenu(session); break;
-      case STATE.STORY:       this._renderStory(); break;
-      case STATE.CODE_ENTRY:  this._renderCodeEntry(session); break;
-      case STATE.HIGH_SCORES: this._renderHighScores(session); break;
-      case STATE.LEVEL_START:  this._renderLevelStart(session); break;
-
       case STATE.PLAYING:     this._renderGame(session); break;
       case STATE.PAUSED:      this._renderPause(session); break;
+      case STATE.LEVEL_START: this._renderLevelStart(session); break;
+      case STATE.STORY:       this._renderStory(); break;
+      case STATE.MENU:        this._renderMenu(session); break;
+      case STATE.CODE_ENTRY:  this._renderCodeEntry(session); break;
+      case STATE.HIGH_SCORES: this._renderHighScores(session); break;
       case STATE.LEVEL_WIN:   this._renderLevelWin(session); break;
       case STATE.LEVEL_FAIL:  this._renderLevelFail(session); break;
       case STATE.GAME_OVER:   this._renderGameOver(session); break;
@@ -202,79 +192,84 @@ drawFromAtlas(key, x, y, size = T, offsetY = 0) {
   // AAA Feature: Smoothed entity drawing for falling/moving objects
   _renderMovingEntities(session) {
     const grid = session.grid;
-    for (let i = 0; i < grid.cells.length; i++) {
+    // dirtyCells already contains all falling-tile indices (re-added by grid.clearDirty()).
+    // Iterating only that set avoids scanning all ~187 cells every frame.
+    for (const i of grid.dirtyCells) {
       const meta = grid.meta[i];
-      // Only draw if currently animating a fall
-      if (meta?.falling && meta.fallAnim !== undefined) {
-        const x = i % grid.cols;
-        const y = Math.floor(i / grid.cols);
-        
-        // Smoothed quadratic easing for the fall
-        const ease = meta.fallAnim * meta.fallAnim; 
-        const visualOffset = (1 - ease) * -T + this._hudOffset;
-        
-        const type = grid.cells[i];
-        const spriteKey = TILE_MAP[type] || 'empty';
-        this.drawFromAtlas(spriteKey, x, y, T, visualOffset);
-      }
+      if (!meta?.falling || meta.fallAnim === undefined) continue;
+
+      const x = i % grid.cols;
+      const y = Math.floor(i / grid.cols);
+
+      const ease        = meta.fallAnim * meta.fallAnim;
+      const visualOffset = (1 - ease) * -T + this._hudOffset;
+
+      const type      = grid.cells[i];
+      const spriteKey = TILE_MAP[type] || 'empty';
+      this.drawFromAtlas(spriteKey, x, y, T, visualOffset);
     }
   }
 
 
   _renderGrid(grid, session) {
     const ctx = this.ctx;
-    
-    // FIX: Render the entire grid every frame. 
-    // Modern phones easily handle drawing a 11x17 map, and this guarantees no black screens.
-    const totalCells = grid.cells.length;
 
-    for (let idx = 0; idx < totalCells; idx++) {
-      const x = idx % grid.cols;
-      const y = Math.floor(idx / grid.cols);
+    // ── Determine which cells to draw this frame ──────────────
+    // On fullClearRequested (level load, resize) redraw every cell.
+    // Otherwise only redraw cells in dirtyCells plus animated cells
+    // (which the grid re-inserts into dirtyCells in clearDirty()).
+    const cellsToDraw = grid.fullClearRequested
+      ? (() => { const all = new Set(); for (let i = 0; i < grid.cells.length; i++) all.add(i); return all; })()
+      : grid.dirtyCells;
+
+    // Also mark animated tiles (portals, gems, crystals) dirty every frame
+    // so their bob/pulse animations keep updating without a full redraw.
+    for (let i = 0; i < grid.cells.length; i++) {
+      const t = grid.cells[i];
+      if (
+        t === TILE.PORTAL || t === TILE.PORTAL_OPEN ||
+        t === TILE.GEM    || t === TILE.CRYSTAL
+      ) {
+        cellsToDraw.add(i);
+      }
+    }
+
+    for (const idx of cellsToDraw) {
+      const x    = idx % grid.cols;
+      const y    = Math.floor(idx / grid.cols);
       const tile = grid.cells[idx];
       const meta = grid.meta[idx];
 
       // 1. Clear the tile area to prevent transparency ghosting
       ctx.clearRect(x * T, (y * T) + this._hudOffset, T, T);
 
-      // 2. Draw Floor (Always draw 'empty' background under everything)
+      // 2. Draw floor background under everything
       this.drawFromAtlas('empty', x, y, T, this._hudOffset);
 
-      // 3. Draw the specific tile with logic
+      // 3. Draw the specific tile
       const spriteKey = TILE_MAP[tile];
-      if (spriteKey && tile !== TILE.PLAYER) {
-        // GHOST FIX: If this tile is currently falling/animating, 
-        // skip drawing the static version to prevent double-images.
-        if (meta && meta.falling) {
-          continue;
-        }
+      if (!spriteKey || tile === TILE.PLAYER) continue;
 
-        // Priority 1: The Portal
-        if (tile === TILE.PORTAL || tile === TILE.PORTAL_OPEN) {
-          const active = (tile === TILE.PORTAL_OPEN) || (session && session.portalOpen);
-          const pulse = active ? Math.sin(this._frame * 0.1) * 3 : 0;
-          this.drawFromAtlas(active ? 'portal_active' : 'portal_inactive', x, y, T, pulse + this._hudOffset);
-        }
-        // Priority 2: Collectibles (With Bobbing)
-        else if (tile === TILE.GEM || tile === TILE.CRYSTAL) {
-          const bob = Math.sin(this._frame * 0.1 + x + y) * 2;
-          this.drawFromAtlas(spriteKey, x, y, T, bob + this._hudOffset);
-        } 
-        // Priority 3: Doors & Interactive
-        else if (tile === TILE.DOOR && meta?.open) {
-          this.drawFromAtlas('door_open', x, y, T, this._hudOffset);
-        }
-        else if (tile === TILE.MACHINE) {
-          const isOn = meta?.active || (session && session.portalOpen);
-          this.drawFromAtlas(isOn ? 'machine_active' : 'machine_inactive', x, y, T, this._hudOffset);
-        }
-        // Priority 4: Standard blocks
-        else {
-          this.drawFromAtlas(spriteKey, x, y, T, this._hudOffset);
-        }
-      } // End if spriteKey
-    } // End for loop
-  } // End _renderGrid
+      // Skip static draw for falling tiles — _renderMovingEntities handles them.
+      if (meta?.falling) continue;
+
+      if (tile === TILE.PORTAL || tile === TILE.PORTAL_OPEN) {
+        const active = (tile === TILE.PORTAL_OPEN) || (session && session.portalOpen);
+        const pulse  = active ? Math.sin(this._frame * 0.1) * 3 : 0;
+        this.drawFromAtlas(active ? 'portal_active' : 'portal_inactive', x, y, T, pulse + this._hudOffset);
+      } else if (tile === TILE.GEM || tile === TILE.CRYSTAL) {
+        const bob = Math.sin(this._frame * 0.1 + x + y) * 2;
+        this.drawFromAtlas(spriteKey, x, y, T, bob + this._hudOffset);
+      } else if (tile === TILE.DOOR && meta?.open) {
+        this.drawFromAtlas('door_open', x, y, T, this._hudOffset);
+      } else if (tile === TILE.MACHINE) {
+        const isOn = meta?.active || (session && session.portalOpen);
+        this.drawFromAtlas(isOn ? 'machine_active' : 'machine_inactive', x, y, T, this._hudOffset);
+      } else {
+        this.drawFromAtlas(spriteKey, x, y, T, this._hudOffset);
+      }
+    }
+  }
 
 
   renderPlayer(session) {

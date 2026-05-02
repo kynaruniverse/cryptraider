@@ -10,6 +10,17 @@ import { Player }      from '../entities/player.js';
 import { EnemyManager }from '../entities/enemies.js';
 import { LEVELS }      from '../levels/levelData.js';
 
+// ── Storage abstraction (swap for Capacitor Preferences in native builds) ──
+const Storage = {
+  get(key, fallback = null) {
+    try { const v = localStorage.getItem(key); return v !== null ? v : fallback; }
+    catch { return fallback; }
+  },
+  set(key, value) {
+    try { localStorage.setItem(key, String(value)); } catch { /* quota / private mode */ }
+  },
+};
+
 export class GameSession {
   constructor(eventBus, audio, input) { // ADDED input here
     this.events  = eventBus;
@@ -24,7 +35,7 @@ export class GameSession {
     // Persistent across levels
     this.lives        = CONFIG.STARTING_LIVES;
     this.score        = 0;
-    this.highScore    = parseInt(localStorage.getItem('cr_high') || '0', 10);
+    this.highScore    = parseInt(Storage.get('cr_high', '0'), 10);
     this.currentLevel = 0;
 
     // Per-level state
@@ -95,9 +106,15 @@ export class GameSession {
     // Enemies
     this.enemies.update(dt, this.player.x, this.player.y);
 
-    // Effects decay
-    for (const fx of this.effects) fx.frame++;
-    this.effects = this.effects.filter(fx => fx.frame < fx.maxFrame);
+    // Effects decay — rebuild array only when an effect has expired.
+    let effectsChanged = false;
+    for (const fx of this.effects) {
+      fx.frame++;
+      if (fx.frame >= fx.maxFrame) effectsChanged = true;
+    }
+    if (effectsChanged) {
+      this.effects = this.effects.filter(fx => fx.frame < fx.maxFrame);
+    }
   }
 
   // ── Input: place dynamite ─────────────────────────────────
@@ -108,10 +125,9 @@ export class GameSession {
     this.audio.placeBomb();
     const { x, y } = this.player;
 
-    // Short fuse — explode after 1.5s (Logic synced to current level)
+    // Short fuse — explode after 1.5 s; deferred through physics queue (no GC closure heap growth).
     const activeLevel = this.currentLevel;
-    setTimeout(() => {
-      // Safety: Added check for this.physics to prevent "Cannot read explode of null"
+    this.physics._defer(() => {
       if (this.state === STATE.PLAYING && this.currentLevel === activeLevel && this.physics) {
         this.physics.explode(x, y, 2);
         this.audio.explosion();
@@ -130,12 +146,11 @@ export class GameSession {
     on('boulder_pushed',() => this.audio.boulder());
 
     on('item_collected', ({ type, points }) => {
-      this._crystalCache = -1; // Invalidate cache
       this.score += points;
       this._checkHighScore();
       if (type === TILE.CRYSTAL) {
         this.audio.collectCrystal();
-        this._checkAllCrystals();
+        this._checkAllCrystals(); // O(1) counter increment
       } else {
         this.audio.collect();
       }
@@ -143,7 +158,7 @@ export class GameSession {
 
     on('player_at_machine', () => this._depositCrystal());
     
-    on('portal_opened', () => { if(this.physics) this.physics.shake(15); });
+    on('portal_opened', () => { if (this.physics) this.physics.shake(15); });
 
     on('player_entered_portal', () => {
       if (this.portalOpen) this._winLevel();
@@ -198,16 +213,13 @@ export class GameSession {
 
   // ── Crystal / Portal logic ────────────────────────────────
   _checkAllCrystals() {
-    // We no longer auto-open the portal here. 
-    // We just update the internal state.
-    const remaining = this.grid.count(TILE.CRYSTAL);
-    this.crystalsDeposited = this.crystalsTotal - remaining;
+    // Increment the counter directly — avoids O(N) grid scan on every collect.
+    this.crystalsDeposited++;
   }
 
   _depositCrystal() {
-    // Only open the portal if the player touches the machine 
-    // AND they actually have all the crystals.
-    if (this.grid.count(TILE.CRYSTAL) === 0) {
+    // Use the maintained counter — no O(N) scan required.
+    if (this.crystalsDeposited >= this.crystalsTotal) {
       this._openPortal();
     } else {
       // Optional: Add a "Need more crystals" sound/effect here
@@ -297,15 +309,15 @@ export class GameSession {
 
   // ── Misc ──────────────────────────────────────────────────
   resetGlobalProgress() {
-      this.lives     = CONFIG.STARTING_LIVES;
-      this.score     = 0;
-      this.currentLevel = 0;
-      this._codeInput   = '';
-    }
+    this.lives        = CONFIG.STARTING_LIVES;
+    this.score        = 0;
+    this.currentLevel = 0;
+    this.codeInput    = ''; // renamed: public surface kept minimal
+  }
     _checkHighScore() {
       if (this.score > this.highScore) {
         this.highScore = this.score;
-        localStorage.setItem('cr_high', String(this.highScore));
+        Storage.set('cr_high', this.highScore);
       }
     }
 
@@ -313,5 +325,15 @@ export class GameSession {
   _cleanupLevel() {
     this._unsubs.forEach(fn => fn());
     this._unsubs = [];
+
+    // Null all level-scoped objects so the GC can collect them immediately.
+    // physics._pending may hold deferred closures that reference the old grid —
+    // clearing it here prevents stale cross-level explosions.
+    if (this.physics) this.physics.destroy();
+    this.grid    = null;
+    this.physics = null;
+    this.player  = null;
+    this.enemies = null;
+    this.effects = [];
   }
 }

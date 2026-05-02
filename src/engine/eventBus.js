@@ -4,8 +4,12 @@
 // ============================================================
 
 export class EventBus {
-  constructor() {
+  /**
+   * @param {boolean} [debug=false] - Enable event tracing without a window global.
+   */
+  constructor(debug = false) {
     this._listeners = new Map();
+    this._debug = debug;
   }
 
   on(event, fn) {
@@ -27,27 +31,32 @@ export class EventBus {
     const list = this._listeners.get(event);
     if (!list) return;
     const idx = list.indexOf(fn);
-    if (idx !== -1) list.splice(idx, 1);
+    // Tombstone: set to null instead of splicing — keeps array indices stable.
+    if (idx !== -1) list[idx] = null;
   }
 
   emit(event, data = {}) {
-    // Optional: Log events in dev mode for easier debugging of physics/input
-    if (window.DEBUG_MODE) {
+    if (this._debug) {
       console.log(`[Event]: ${event}`, data);
     }
 
     const list = this._listeners.get(event);
     if (!list) return;
 
-    // We use a spread to create a shallow copy so that if a listener 
-    // unsubscribes during the loop, it doesn't break the iteration.
-    [...list].forEach(fn => {
-      try {
-        fn(data);
-      } catch (error) {
-        console.error(`Error in listener for event "${event}":`, error);
+    let hasNulls = false;
+    for (let i = 0, len = list.length; i < len; i++) {
+      const fn = list[i];
+      if (!fn) { hasNulls = true; continue; }
+      try { fn(data); } catch (err) {
+        console.error(`Error in listener for "${event}":`, err);
       }
-    });
+    }
+    // Lazy compaction: only allocate when tombstones accumulate.
+    if (hasNulls) {
+      const compacted = list.filter(Boolean);
+      if (compacted.length === 0) this._listeners.delete(event);
+      else this._listeners.set(event, compacted);
+    }
   }
 
 
