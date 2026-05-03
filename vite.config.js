@@ -24,11 +24,13 @@ export default defineConfig({
       },
     },
 
-    // Inline assets smaller than 4 KB — avoids extra fetches for SVG/tiny assets.
-    assetsInlineLimit: 4096,
+    // Inline assets smaller than 8 KB; bump from 4 KB to reduce round trips
+    // for small icon/font assets while keeping larger assets separately cacheable.
+    assetsInlineLimit: 8192,
 
-    // Source maps only for local debugging; strip in CI/production.
-    sourcemap: false,
+    // Source maps controlled by environment variable — no file edit needed in CI.
+    // Set VITE_SOURCEMAP=true in CI to enable.
+    sourcemap: process.env.VITE_SOURCEMAP === 'true',
   },
 
   // Dev server mirrors the Capacitor androidScheme: 'https' setting.

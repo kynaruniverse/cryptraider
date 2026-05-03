@@ -9,15 +9,32 @@ import { GameSession }     from './engine/gameSession.js';
 import { Renderer }        from './ui/renderer.js';
 import { InputSystem }     from './systems/input.js';
 import { AudioSystem }     from './systems/audio.js';
-import { STATE, TILE_SIZE, COLS, ROWS } from './engine/constants.js';
+import { TILE_SIZE, COLS, ROWS, STATE, HUD_OFFSET } from './engine/constants.js';
 import { generateCode, validateCode } from './systems/levelCodes.js';
 
-// ── Globals ───────────────────────────────────────────────
+// ── Application state — encapsulated to avoid module-level side effects ───
+class App {
+  constructor() {
+    this.renderer      = null;
+    this.session       = null;
+    this.input         = null;
+    this.audio         = null;
+    this.events        = null;
+    this.uiState       = STATE.MENU;
+    this.lastTime      = 0;
+    this._hintShown    = false;
+    this._keydownHandler = null;
+    this._bootComplete = false;
+  }
+}
+const app = new App();
+// Aliases kept for backward-compat with remaining module-level functions;
+// new code should access via `app.*` directly.
 let renderer, session, input, audio, events;
 let uiState = STATE.MENU;
 let _hintShown = false;
 let lastTime = 0;
-let _keydownHandler = null; // tracked for safe teardown
+let _keydownHandler = null;
 
 // ── Canvas setup — portrait fill ─────────────────────────
 const canvas = document.getElementById('gameCanvas');
@@ -27,7 +44,7 @@ function resizeCanvas() {
   const vh = window.innerHeight;
 
   const logicalW = TILE_SIZE * COLS;
-  const logicalH = TILE_SIZE * ROWS;
+  const logicalH = (TILE_SIZE * ROWS) + HUD_OFFSET; // include HUD strip in logical height
 
   const scale = Math.min(vw / logicalW, vh / logicalH);
 
@@ -103,9 +120,12 @@ function loop(ts) {
 
   // Update logic
   if (uiState === STATE.PLAYING) {
-    // We no longer pass 'dir'. session.update now uses its internal this.input reference.
-    session.update(dt); 
-    // Sync UI state if session logic triggers a state change (win/fail)
+    try {
+      session.update(dt);
+    } catch (err) {
+      console.error('[CryptRaider] session.update threw:', err);
+      uiState = STATE.MENU; // recover to menu rather than locking the thread
+    }
     if (session.state !== STATE.PLAYING) {
       uiState = session.state;
     }

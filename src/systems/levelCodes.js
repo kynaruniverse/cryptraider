@@ -47,11 +47,11 @@ export function generateCode(levelIndex) {
  * @returns {number} Level index or -1 if invalid
  */
 export function validateCode(input) {
-  if (!input || typeof input !== 'string') return -1;
-  
+  if (!input || typeof input !== 'string') return null;
+
   // Remove anything that isn't a letter or number (e.g., accidental hyphens or dots)
   const clean = input.toUpperCase().replace(/[^A-Z2-9]/g, '');
-  if (clean.length !== 6) return -1;
+  if (clean.length !== 6) return null;
 
 
   for (let lvl = 0; lvl < CONFIG.TOTAL_LEVELS; lvl++) {

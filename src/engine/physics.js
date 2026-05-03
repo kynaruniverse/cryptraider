@@ -17,8 +17,8 @@ export class Physics {
     // Define "Rules" for how tiles respond to impact
     this.impactRules = {
       [TILE.PLAYER]: (tx, ty, fallingType) => {
-        // Only kill the player if the falling object is a BOULDER (Weighted Physics)
-        if (fallingType === TILE.BOULDER) {
+        // Boulders and falling dynamite both crush the player.
+        if (fallingType === TILE.BOULDER || fallingType === TILE.DYNAMITE) {
           this.events.emit('player_crushed', { x: tx, y: ty });
         }
       },
@@ -30,7 +30,7 @@ export class Physics {
   }
 
   update(dt) {
-    // Drain pending deferred actions (replaces setTimeout)
+    // Drain pending deferred actions.
     for (let i = this._pending.length - 1; i >= 0; i--) {
       this._pending[i].delay -= dt;
       if (this._pending[i].delay <= 0) {
@@ -39,9 +39,19 @@ export class Physics {
       }
     }
 
+    // Advance fall animation progress on all currently-falling cells.
+    // fallAnim runs 0→1 over GRAVITY_INTERVAL_MS, giving smooth interpolation.
+    const animSpeed = dt / GRAVITY_INTERVAL_MS;
+    for (let i = 0; i < this.grid.meta.length; i++) {
+      const meta = this.grid.meta[i];
+      if (meta?.falling) {
+        meta.fallAnim = Math.min(1, (meta.fallAnim ?? 0) + animSpeed);
+      }
+    }
+
     this._elapsed += dt;
-    if (this._elapsed >= GRAVITY_INTERVAL_MS) {
-      this._elapsed = 0;
+    while (this._elapsed >= GRAVITY_INTERVAL_MS) {
+      this._elapsed -= GRAVITY_INTERVAL_MS;
       this._tickGravity();
     }
   }
@@ -143,10 +153,12 @@ export class Physics {
   }
 
   explode(cx, cy, radius = 2) {
-    const destroyed = [];
+    if (!this._destroyedBuf) this._destroyedBuf = [];
+    const destroyed = this._destroyedBuf;
+    destroyed.length = 0; // reuse pre-allocated buffer
     const r2 = radius * radius;
     const currentGrid = this.grid;
-
+    
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         if (dx * dx + dy * dy > r2) continue;
@@ -156,9 +168,17 @@ export class Physics {
 
         const tile = this.grid.get(ex, ey);
         
-        // Unbreakable tiles
-        if (tile === TILE.STONE || tile === TILE.EMPTY || tile === TILE.PORTAL_OPEN) continue;
-
+        // Unbreakable tiles — outer stone border is indestructible; inner stone IS blastable
+        // PORTAL_OPEN is never destroyed (player needs it to escape).
+        if (tile === TILE.EMPTY || tile === TILE.PORTAL_OPEN) continue;
+        // Outer border stone (x===0, x===cols-1, y===0, y===rows-1) stays forever.
+        if (tile === TILE.STONE) {
+          const isEdge = (ex === 0 || ex === this.grid.cols - 1 ||
+                          ey === 0 || ey === this.grid.rows - 1);
+          if (isEdge) continue; // border stone indestructible
+          // Inner stone walls can be blown up — fall through to destroy.
+        }
+        
         // Reactive logic
         if (tile === TILE.PLAYER) this.events.emit('player_crushed', { x: ex, y: ey });
         if (tile === TILE.CRYSTAL) {

@@ -3,7 +3,7 @@
 // Portrait-first canvas rendering, no d-pad, upgraded UI
 // ============================================================
 
-import { TILE, TILE_SIZE, COLS, ROWS, STATE, CONFIG } from '../engine/constants.js';
+import { TILE, TILE_SIZE, COLS, ROWS, STATE, CONFIG, HUD_OFFSET } from '../engine/constants.js';
 import { LEVELS } from '../levels/levelData.js';
 
 const T = TILE_SIZE; // 32
@@ -35,17 +35,19 @@ const TILE_MAP = {
 export class Renderer {
   constructor(canvas, sprites) {
     this.canvas  = canvas;
-    this.ctx     = canvas.getContext('2d', { alpha: false }); // Optimization: Opaque canvas
+    this.ctx     = canvas.getContext('2d', { alpha: false });
     this.sprites = sprites;
-    
-    this.updateLayout();
-    this._frame  = 0;
-    this._shake  = 0;
-    // Dynamic offset based on screen height to prevent notch-clipping
-    this._hudOffset = Math.floor(this.canvas.height * 0.08); // 8% of screen height for HUD
 
+    this._frame       = 0;
+    this._shake       = 0;
+    this._hudOffset = HUD_OFFSET;
+    this._menuGlow  = null;
+    this._hudGrad   = null;
+    this._hudGradW  = 0;
     this._portalPulse = 0;
     this._particles   = [];
+
+    this.updateLayout();
     this._initParticles();
   }
 
@@ -95,9 +97,10 @@ export class Renderer {
   }
   
   updateLayout() {
-    // Dynamically calculate HUD height based on tile size/screen ratio
-    this._hudOffset = this.canvas.height / ROWS > 34 ? 44 : 38;
-  }  
+    this._hudOffset = HUD_OFFSET;
+    this._menuGlow  = null; // invalidate gradient caches on resize
+    this._hudGrad   = null;
+  }
 
   // ── Master render dispatcher ──────────────────────────────
   render(gameState, session, input) {
@@ -114,6 +117,8 @@ export class Renderer {
       this._shake *= 0.85;
     }
 
+    // Full clear every frame — _renderGrid now blits the pre-baked static background
+    // canvas in one drawImage call, so this clear is cheap relative to per-cell draws.
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     switch (gameState) {
@@ -131,7 +136,15 @@ export class Renderer {
       default: break;
     }
 
-    if (session?.grid) session.grid.clearDirty();
+    if (session?.grid) {
+      // Invalidate -cell cache if any dirty cell was an animated tile type.
+      if (this._animatedCells) {
+        for (const i of session.grid.dirtyCells) {
+          if (this._animatedCells.has(i)) { this._animatedCells = null; break; }
+        }
+      }
+      session.grid.clearDirty();
+    }
     ctx.restore();
   }
 
@@ -189,84 +202,182 @@ drawFromAtlas(key, x, y, size = T, offsetY = 0) {
     );
 }
 
-  // AAA Feature: Smoothed entity drawing for falling/moving objects
   _renderMovingEntities(session) {
+    // Since _renderGrid now draws all cells every frame (including falling ones
+    // at their logical position), this pass only needs to handle mid-fall
+    // animation offset — drawing the sprite slightly above its grid row to give
+    // smooth motion. The base cell is already drawn by _renderGrid as empty.
     const grid = session.grid;
-    // dirtyCells already contains all falling-tile indices (re-added by grid.clearDirty()).
-    // Iterating only that set avoids scanning all ~187 cells every frame.
-    for (const i of grid.dirtyCells) {
+    for (let i = 0; i < grid.cells.length; i++) {
       const meta = grid.meta[i];
-      if (!meta?.falling || meta.fallAnim === undefined) continue;
+      if (!meta?.falling) continue;
 
       const x = i % grid.cols;
       const y = Math.floor(i / grid.cols);
 
-      const ease        = meta.fallAnim * meta.fallAnim;
-      const visualOffset = (1 - ease) * -T + this._hudOffset;
+      // Animate: tile slides down from the row above into its current row.
+      // fallAnim goes 0→1; at 0 the tile is T pixels above, at 1 it is in place.
+      const progress = Math.min(1, meta.fallAnim ?? 1);
+      const ease     = progress * progress; // ease-in
+      const offsetPx = (1 - ease) * -T;    // starts T px above, ends at 0
 
       const type      = grid.cells[i];
-      const spriteKey = TILE_MAP[type] || 'empty';
-      this.drawFromAtlas(spriteKey, x, y, T, visualOffset);
+      const spriteKey = TILE_MAP[type];
+      if (spriteKey && spriteKey !== 'empty') {
+        // Draw at current grid row with the animation offset applied on top of hudOffset.
+        this.drawFromAtlas(spriteKey, x, y, T, this._hudOffset + offsetPx);
+      }
     }
   }
 
 
   _renderGrid(grid, session) {
-    const ctx = this.ctx;
-
-    // ── Determine which cells to draw this frame ──────────────
-    // On fullClearRequested (level load, resize) redraw every cell.
-    // Otherwise only redraw cells in dirtyCells plus animated cells
-    // (which the grid re-inserts into dirtyCells in clearDirty()).
-    const cellsToDraw = grid.fullClearRequested
-      ? (() => { const all = new Set(); for (let i = 0; i < grid.cells.length; i++) all.add(i); return all; })()
-      : grid.dirtyCells;
-
-    // Also mark animated tiles (portals, gems, crystals) dirty every frame
-    // so their bob/pulse animations keep updating without a full redraw.
+    // Draw every cell every frame. 187 drawImage calls is trivial on mobile GPU —
+    // far cheaper than the correctness bugs caused by any static-cache approach
+    // on a mutable grid where any cell can change at any time.
     for (let i = 0; i < grid.cells.length; i++) {
-      const t = grid.cells[i];
-      if (
-        t === TILE.PORTAL || t === TILE.PORTAL_OPEN ||
-        t === TILE.GEM    || t === TILE.CRYSTAL
-      ) {
-        cellsToDraw.add(i);
-      }
+      const x    = i % grid.cols;
+      const y    = Math.floor(i / grid.cols);
+      const tile = grid.cells[i];
+      const meta = grid.meta[i];
+      this._drawCell(x, y, tile, meta, session);
+    }
+  }
+
+  /** Draws a single cell at grid position (x, y) onto the main canvas. */
+  _drawCell(x, y, tile, meta, session) {
+    // 1. Always draw the floor base first.
+    this.drawFromAtlas('empty', x, y, T, this._hudOffset);
+
+    // 2. Nothing more to draw for empty cells.
+    if (tile === TILE.EMPTY || tile === TILE.PLAYER) return;
+
+    // 3. Falling tiles are handled by _renderMovingEntities with animation.
+    if (meta?.falling) return;
+
+    const spriteKey = TILE_MAP[tile];
+    if (!spriteKey) return;
+
+    // 4. Special-case tiles with animated or state-dependent sprites.
+    if (tile === TILE.PORTAL || tile === TILE.PORTAL_OPEN) {
+      const active = (tile === TILE.PORTAL_OPEN) || !!(session?.portalOpen);
+      const pulse  = active ? Math.sin(this._frame * 0.1) * 3 : 0;
+      this.drawFromAtlas(active ? 'portal_active' : 'portal_inactive', x, y, T, pulse + this._hudOffset);
+    } else if (tile === TILE.GEM || tile === TILE.CRYSTAL) {
+      const bob = Math.sin(this._frame * 0.1 + x + y) * 2;
+      this.drawFromAtlas(spriteKey, x, y, T, bob + this._hudOffset);
+    } else if (tile === TILE.DOOR) {
+      this.drawFromAtlas(meta?.open ? 'door_open' : 'door_closed', x, y, T, this._hudOffset);
+    } else if (tile === TILE.MACHINE) {
+      const isOn = !!(meta?.active) || !!(session?.portalOpen);
+      this.drawFromAtlas(isOn ? 'machine_active' : 'machine_inactive', x, y, T, this._hudOffset);
+    } else {
+      // All static tiles: stone, dirt, sand, boulder, gravel, ladder, key, dynamite, enemies, explosion.
+      this.drawFromAtlas(spriteKey, x, y, T, this._hudOffset);
+    }
+  }
+
+  /**
+   * Bakes all static tiles (terrain that never animates: stone, dirt, sand,
+   * ladders, boulders at rest, keys, doors, dynamite, machines, enemies at spawn)
+   * into an offscreen canvas.  Animated tiles (crystals, gems, portals) are
+   * intentionally LEFT OUT — they are drawn dynamically every frame on top.
+   *
+   * Critically: EMPTY tiles ARE baked (as the dark floor), so the blit provides
+   * a complete background layer.  Entities (player, enemies) are NOT baked.
+   */
+  _buildStaticBg(grid) {
+    const w = grid.cols * T;
+    const h = grid.rows * T;
+
+    if (!this._staticBg || this._staticBg.width !== w || this._staticBg.height !== h) {
+      this._staticBg = document.createElement('canvas');
+      this._staticBg.width  = w;
+      this._staticBg.height = h;
     }
 
-    for (const idx of cellsToDraw) {
-      const x    = idx % grid.cols;
-      const y    = Math.floor(idx / grid.cols);
-      const tile = grid.cells[idx];
-      const meta = grid.meta[idx];
+    const bgCtx = this._staticBg.getContext('2d');
+    bgCtx.clearRect(0, 0, w, h);
 
-      // 1. Clear the tile area to prevent transparency ghosting
-      ctx.clearRect(x * T, (y * T) + this._hudOffset, T, T);
+    // Tiles that must NOT be baked — drawn dynamically each frame.
+    const DYNAMIC = new Set([
+      TILE.PLAYER, TILE.ENEMY_M, TILE.ENEMY_F,
+      TILE.PORTAL, TILE.PORTAL_OPEN,  // animated pulse
+      TILE.GEM, TILE.CRYSTAL,          // animated bob
+      TILE.EXPLOSION,
+    ]);
 
-      // 2. Draw floor background under everything
-      this.drawFromAtlas('empty', x, y, T, this._hudOffset);
+    const s = this.sprites;
 
-      // 3. Draw the specific tile
+    for (let i = 0; i < grid.cells.length; i++) {
+      const tile = grid.cells[i];
+      const x    = i % grid.cols;
+      const y    = Math.floor(i / grid.cols);
+
+      // Always bake the empty floor base.
+      if (s.coords?.empty && s.atlas) {
+        const c = s.coords.empty;
+        bgCtx.drawImage(s.atlas, c.x, c.y, s.S, s.S, x * T, y * T, T, T);
+      }
+
+      if (DYNAMIC.has(tile) || tile === TILE.EMPTY) continue;
+
+      // Boulders and gravel: bake initial position; physics marks them dirty
+      // when they move, so _drawStaticCell repaints with current state.
       const spriteKey = TILE_MAP[tile];
-      if (!spriteKey || tile === TILE.PLAYER) continue;
+      if (!spriteKey) continue;
 
-      // Skip static draw for falling tiles — _renderMovingEntities handles them.
+      // Machine: bake inactive state; active state is handled in _drawStaticCell
+      // when the machine's dirty bit is set after portal opens.
+      const key = tile === TILE.MACHINE ? 'machine_inactive' : spriteKey;
+      if (s.coords?.[key] && s.atlas) {
+        const c = s.coords[key];
+        bgCtx.drawImage(s.atlas, c.x, c.y, s.S, s.S, x * T, y * T, T, T);
+      }
+    }
+  }
+
+  /** Bakes all static (non-animated, non-entity) tiles onto an offscreen canvas. */
+  _buildStaticBg(grid) {
+    const w = grid.cols * T;
+    const h = grid.rows * T;
+
+    if (!this._staticBg || this._staticBg.width !== w || this._staticBg.height !== h) {
+      this._staticBg = document.createElement('canvas');
+      this._staticBg.width  = w;
+      this._staticBg.height = h;
+    }
+
+    const bgCtx = this._staticBg.getContext('2d');
+    bgCtx.clearRect(0, 0, w, h);
+
+    const ANIMATED = new Set([TILE.PORTAL, TILE.PORTAL_OPEN, TILE.GEM, TILE.CRYSTAL]);
+    const SKIP     = new Set([TILE.PLAYER, TILE.ENEMY_M, TILE.ENEMY_F, TILE.EXPLOSION,
+                              TILE.DYNAMITE, TILE.BOULDER, TILE.GRAVEL]);
+
+    for (let i = 0; i < grid.cells.length; i++) {
+      const tile = grid.cells[i];
+      const x    = i % grid.cols;
+      const y    = Math.floor(i / grid.cols);
+      const meta = grid.meta[i];
+
+      // Always draw the empty floor base.
+      const s = this.sprites;
+      if (s.coords?.empty && s.atlas) {
+        const c = s.coords.empty;
+        bgCtx.drawImage(s.atlas, c.x, c.y, s.S, s.S, x * T, y * T, T, T);
+      }
+
+      // Skip entities, falling objects, and animated tiles — they are drawn dynamically.
+      if (SKIP.has(tile) || ANIMATED.has(tile) || tile === TILE.EMPTY) continue;
       if (meta?.falling) continue;
 
-      if (tile === TILE.PORTAL || tile === TILE.PORTAL_OPEN) {
-        const active = (tile === TILE.PORTAL_OPEN) || (session && session.portalOpen);
-        const pulse  = active ? Math.sin(this._frame * 0.1) * 3 : 0;
-        this.drawFromAtlas(active ? 'portal_active' : 'portal_inactive', x, y, T, pulse + this._hudOffset);
-      } else if (tile === TILE.GEM || tile === TILE.CRYSTAL) {
-        const bob = Math.sin(this._frame * 0.1 + x + y) * 2;
-        this.drawFromAtlas(spriteKey, x, y, T, bob + this._hudOffset);
-      } else if (tile === TILE.DOOR && meta?.open) {
-        this.drawFromAtlas('door_open', x, y, T, this._hudOffset);
-      } else if (tile === TILE.MACHINE) {
-        const isOn = meta?.active || (session && session.portalOpen);
-        this.drawFromAtlas(isOn ? 'machine_active' : 'machine_inactive', x, y, T, this._hudOffset);
-      } else {
-        this.drawFromAtlas(spriteKey, x, y, T, this._hudOffset);
+      const spriteKey = TILE_MAP[tile];
+      if (!spriteKey) continue;
+
+      if (s.coords?.[spriteKey] && s.atlas) {
+        const c = s.coords[spriteKey];
+        bgCtx.drawImage(s.atlas, c.x, c.y, s.S, s.S, x * T, y * T, T, T);
       }
     }
   }
@@ -276,6 +387,10 @@ drawFromAtlas(key, x, y, size = T, offsetY = 0) {
     if (!session.player?.alive) return;
     const { x, y, dir } = session.player;
     const dirKey = dir?.name?.toLowerCase() || 'down';
+    // If player is occupying a ladder cell, render ladder first then player on top
+    if (session.grid?.isClimbable(x, y)) {
+      this.drawFromAtlas('ladder', x, y, T, this._hudOffset);
+    }
     this.drawFromAtlas(`player_${dirKey}`, x, y, T, this._hudOffset);
   }
 
@@ -300,11 +415,14 @@ drawFromAtlas(key, x, y, size = T, offsetY = 0) {
     const ctx = this.ctx;
     const W   = this.canvas.width;
 
-    // Gradient HUD bar
-    const grad = ctx.createLinearGradient(0, 0, 0, 38);
-    grad.addColorStop(0, 'rgba(5,2,0,0.95)');
-    grad.addColorStop(1, 'rgba(5,2,0,0.0)');
-    ctx.fillStyle = grad;
+    // Gradient HUD bar — baked once, reused every frame.
+    if (!this._hudGrad || this._hudGradW !== W) {
+      this._hudGrad  = ctx.createLinearGradient(0, 0, 0, 38);
+      this._hudGrad.addColorStop(0, 'rgba(5,2,0,0.95)');
+      this._hudGrad.addColorStop(1, 'rgba(5,2,0,0.0)');
+      this._hudGradW = W;
+    }
+    ctx.fillStyle = this._hudGrad;
     ctx.fillRect(0, 0, W, 38);
 
     // Bottom thin accent line
@@ -346,21 +464,20 @@ drawFromAtlas(key, x, y, size = T, offsetY = 0) {
     ctx.textAlign = 'center';
     ctx.fillText(session.score, W / 2, 22);
 
-    // ── Crystal counter (Live) ──
-    // Direct count from grid is more reliable for the HUD than the cache during movement
-    const remaining = session.grid ? session.grid.count(TILE.CRYSTAL) : 0;
+    // ── Crystal counter ──
+    const remaining = Math.max(0, (session.crystalsTotal || 0) - (session.crystalsDeposited || 0));
     ctx.fillStyle = '#55CCFF';
-
-    ctx.font      = `12px ${font}`;
+    ctx.font      = `bold 12px ${font}`;
     ctx.textAlign = 'right';
-    ctx.fillText(`◆ ${remaining}`, W - 56, 22);
+    ctx.fillText(`◆${remaining}`, W - 68, 22);
 
     // ── Timer ──
     const t   = Math.ceil(session.timeLeft);
     const col = t > 30 ? '#88FFFF' : '#FF4444';
     ctx.fillStyle = col;
     ctx.font      = `bold 13px ${font}`;
-    ctx.fillText(`${t}s`, W - 8, 22);
+    ctx.textAlign = 'right';
+    ctx.fillText(`${t}s`, W - 6, 22);
 
     // ── Level badge ──
     const lvlX = W / 2;
@@ -373,15 +490,21 @@ drawFromAtlas(key, x, y, size = T, offsetY = 0) {
     ctx.textAlign = 'center';
     ctx.fillText(`LVL ${session.currentLevel + 1}`, lvlX, 14);
 
-    // ── Portal open indicator ──
+    // ── Portal open indicator — rendered inside HUD height, not below ──
     if (session.portalOpen) {
-      const pulse = 0.7 + Math.sin(this._frame * 0.2) * 0.3;
+      const pulse = 0.65 + Math.sin(this._frame * 0.18) * 0.35;
       ctx.save();
       ctx.globalAlpha = pulse;
+      // Small pill badge in top-right area
+      const badgeW = 86, badgeH = 13, badgeX = W - badgeW - 4, badgeY = 24;
+      ctx.fillStyle = 'rgba(0,255,200,0.15)';
+      ctx.beginPath(); ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6); ctx.fill();
       ctx.fillStyle   = '#00FFCC';
-      ctx.font        = `bold 10px ${font}`;
+      ctx.font        = `bold 9px ${font}`;
       ctx.textAlign   = 'center';
-      ctx.fillText('▶ PORTAL OPEN ◀', W / 2, 50);
+      ctx.shadowColor = '#00FFCC';
+      ctx.shadowBlur  = 6;
+      ctx.fillText('▶ PORTAL OPEN ◀', badgeX + badgeW / 2, badgeY + 9);
       ctx.restore();
     }
   }
@@ -396,12 +519,16 @@ drawFromAtlas(key, x, y, size = T, offsetY = 0) {
     ctx.fillStyle = '#050200';
     ctx.fillRect(0, 0, W, H);
 
-    // Radial glow behind title
-    const glow = ctx.createRadialGradient(W/2, H*0.22, 0, W/2, H*0.22, W*0.7);
-    glow.addColorStop(0,   'rgba(180,80,0,0.25)');
-    glow.addColorStop(0.5, 'rgba(100,30,0,0.1)');
-    glow.addColorStop(1,   'rgba(0,0,0,0)');
-    ctx.fillStyle = glow;
+    // Radial glow — baked once per canvas size.
+    if (!this._menuGlow || this._menuGlowW !== W || this._menuGlowH !== H) {
+      this._menuGlow  = ctx.createRadialGradient(W/2, H*0.22, 0, W/2, H*0.22, W*0.7);
+      this._menuGlow.addColorStop(0,   'rgba(180,80,0,0.25)');
+      this._menuGlow.addColorStop(0.5, 'rgba(100,30,0,0.1)');
+      this._menuGlow.addColorStop(1,   'rgba(0,0,0,0)');
+      this._menuGlowW = W;
+      this._menuGlowH = H;
+    }
+    ctx.fillStyle = this._menuGlow;
     ctx.fillRect(0, 0, W, H);
 
     // Ambient ember particles
@@ -632,86 +759,215 @@ drawFromAtlas(key, x, y, size = T, offsetY = 0) {
 
   // ── LEVEL WIN ─────────────────────────────────────────────
   _renderLevelWin(session) {
-    this._renderOverlay('#001200', 0.88);
     const ctx  = this.ctx;
     const W    = this.canvas.width;
     const H    = this.canvas.height;
     const font = '"Share Tech Mono", monospace';
+    const cinzel = '"Cinzel", serif';
 
+    // Dark green background
+    ctx.fillStyle = '#030d06';
+    ctx.fillRect(0, 0, W, H);
+
+    // Particle shower — reuse existing particle system in gold
+    for (const p of this._particles) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(p.life, 1) * 0.85;
+      ctx.fillStyle   = p.life > 0.5 ? '#FFD700' : '#00FF88';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * 1.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Hieroglyph accent lines
+    this._drawHieroglyphBand(ctx, W, H * 0.08);
+    this._drawHieroglyphBand(ctx, W, H * 0.92);
+
+    // ── Title ──
     ctx.save();
-    ctx.shadowColor = '#00FF88';
-    ctx.shadowBlur  = 20;
-    ctx.fillStyle   = '#00FF88';
-    ctx.font        = `900 ${Math.floor(W * 0.09)}px "Cinzel", serif`;
     ctx.textAlign   = 'center';
-    ctx.fillText('LEVEL', W / 2, H * 0.28);
-    ctx.fillText('CLEAR!', W / 2, H * 0.38);
+    ctx.shadowColor = '#00FF88';
+    ctx.shadowBlur  = 24;
+    ctx.fillStyle   = '#00FF88';
+    ctx.font        = `900 ${Math.floor(W * 0.1)}px ${cinzel}`;
+    ctx.fillText('LEVEL', W / 2, H * 0.22);
+    ctx.shadowColor = '#FFD700';
+    ctx.fillStyle   = '#FFD700';
+    ctx.fillText('CLEAR!', W / 2, H * 0.32);
     ctx.restore();
 
-    // Stats panel
-    const panW = Math.floor(W * 0.76);
+    // Level number badge
+    const badgeY = H * 0.37;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,215,0,0.10)';
+    ctx.beginPath(); ctx.roundRect(W * 0.3, badgeY - 18, W * 0.4, 24, 12); ctx.fill();
+    ctx.fillStyle = '#AA8822';
+    ctx.font      = `bold ${Math.floor(H * 0.022)}px ${font}`;
+    ctx.fillText(`— LEVEL ${session.currentLevel + 1} —`, W / 2, badgeY);
+    ctx.restore();
+
+    // ── Stats panel ──
+    const panW = Math.floor(W * 0.82);
     const panX = (W - panW) / 2;
-    const panY = H * 0.44;
-    const panH = Math.floor(H * 0.22);
-    ctx.fillStyle = 'rgba(0,40,20,0.8)';
-    ctx.beginPath(); ctx.roundRect(panX, panY, panW, panH, 8); ctx.fill();
-    ctx.strokeStyle = '#00AA55'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.roundRect(panX, panY, panW, panH, 8); ctx.stroke();
+    const panY = H * 0.43;
+    const panH = Math.floor(H * 0.28);
+    const r    = 10;
 
-    ctx.fillStyle = '#FFD700';
-    ctx.font      = `${Math.floor(H * 0.026)}px ${font}`;
-    ctx.fillText(`Score: ${session.score}`, W / 2, panY + panH * 0.35);
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 30, 15, 0.92)';
+    ctx.strokeStyle = '#00AA55';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath(); ctx.roundRect(panX, panY, panW, panH, r); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(panX, panY, panW, panH, r); ctx.stroke();
+    ctx.restore();
+
+    // Inner glow line
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,255,136,0.15)';
+    ctx.lineWidth   = 1;
+    ctx.beginPath(); ctx.roundRect(panX + 4, panY + 4, panW - 8, panH - 8, r - 2); ctx.stroke();
+    ctx.restore();
+
+    // Stat rows
+    const statFont  = `${Math.floor(H * 0.024)}px ${font}`;
+    const labelCol  = '#667766';
+    const valueCol  = '#FFD700';
+    const row1Y = panY + panH * 0.25;
+    const row2Y = panY + panH * 0.52;
+    const row3Y = panY + panH * 0.78;
+    const lx    = panX + panW * 0.12;
+    const vx    = panX + panW * 0.88;
+
+    ctx.font     = statFont;
+    ctx.textAlign = 'left';
+
+    // Score
+    ctx.fillStyle = labelCol;
+    ctx.fillText('SCORE', lx, row1Y);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = valueCol;
+    ctx.fillText(session.score.toLocaleString(), vx, row1Y);
+
+    // Lives
+    ctx.textAlign = 'left';
+    ctx.fillStyle = labelCol;
+    ctx.fillText('LIVES', lx, row2Y);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#FF6666';
+    ctx.fillText('♥'.repeat(Math.max(0, session.lives)), vx, row2Y);
+
+    // Time bonus hint
+    ctx.textAlign = 'left';
+    ctx.fillStyle = labelCol;
+    ctx.fillText('LEVEL', lx, row3Y);
+    ctx.textAlign = 'right';
     ctx.fillStyle = '#88FFCC';
-    ctx.fillText(`Lives: ${session.lives}`, W / 2, panY + panH * 0.65);
+    ctx.fillText(`${session.currentLevel + 1} / 100`, vx, row3Y);
 
-    // Level code
-    if (session.currentLevel + 1 < 100) {
-      const { generateCode } = window._CR_levelCodes || {};
-      if (generateCode) {
-        const code = generateCode(session.currentLevel + 1);
+    // ── Next level code ──
+    const nextIdx = session.currentLevel + 1;
+    if (nextIdx < 100) {
+      import('../systems/levelCodes.js').then(({ generateCode }) => {
+        // Store code for synchronous rendering
+        this._nextLevelCode = generateCode(nextIdx);
+      }).catch(() => {});
+
+      if (this._nextLevelCode) {
+        const codeY = H * 0.77;
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(100,60,180,0.15)';
+        ctx.beginPath(); ctx.roundRect(panX, codeY - 20, panW, 28, 6); ctx.fill();
         ctx.fillStyle = '#AA88FF';
-        ctx.font      = `${Math.floor(H * 0.02)}px ${font}`;
-        ctx.fillText(`Next code: ${code}`, W / 2, H * 0.73);
+        ctx.font      = `${Math.floor(H * 0.019)}px ${font}`;
+        ctx.fillText(`NEXT CODE: ${this._nextLevelCode}`, W / 2, codeY);
+        ctx.restore();
       }
     }
 
-    const pulse = 0.5 + Math.sin(this._frame * 0.1) * 0.5;
+    // ── Tap to continue — pulsing CTA ──
+    const pulse = 0.45 + Math.sin(this._frame * 0.12) * 0.55;
     ctx.save();
+    ctx.textAlign   = 'center';
     ctx.globalAlpha = pulse;
-    ctx.fillStyle   = '#88FFCC';
-    ctx.font        = `bold ${Math.floor(H * 0.028)}px ${font}`;
-    ctx.fillText('Tap to continue →', W / 2, H * 0.85);
+    // Glow
+    ctx.shadowColor = '#00FF88';
+    ctx.shadowBlur  = 12;
+    ctx.fillStyle   = '#00FF88';
+    ctx.font        = `bold ${Math.floor(H * 0.03)}px ${cinzel}`;
+    ctx.fillText('▶  TAP TO CONTINUE  ◀', W / 2, H * 0.88);
     ctx.restore();
   }
 
   // ── LEVEL FAIL ────────────────────────────────────────────
   _renderLevelFail(session) {
-    this._renderOverlay('#200000', 0.88);
-    const ctx  = this.ctx;
-    const W    = this.canvas.width;
-    const H    = this.canvas.height;
-    const font = '"Share Tech Mono", monospace';
+    const ctx    = this.ctx;
+    const W      = this.canvas.width;
+    const H      = this.canvas.height;
+    const font   = '"Share Tech Mono", monospace';
+    const cinzel = '"Cinzel", serif';
 
+    ctx.fillStyle = '#100000';
+    ctx.fillRect(0, 0, W, H);
+
+    // Red radial glow
+    const glow = ctx.createRadialGradient(W / 2, H * 0.35, 0, W / 2, H * 0.35, W * 0.7);
+    glow.addColorStop(0,   'rgba(200,0,0,0.3)');
+    glow.addColorStop(0.6, 'rgba(80,0,0,0.1)');
+    glow.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    this._drawHieroglyphBand(ctx, W, H * 0.08);
+    this._drawHieroglyphBand(ctx, W, H * 0.92);
+
+    // Title
     ctx.save();
-    ctx.shadowColor = '#FF2200';
-    ctx.shadowBlur  = 22;
-    ctx.fillStyle   = '#FF4444';
-    ctx.font        = `900 ${Math.floor(W * 0.12)}px "Cinzel", serif`;
     ctx.textAlign   = 'center';
-    ctx.fillText('YOU', W / 2, H * 0.28);
-    ctx.fillText('DIED', W / 2, H * 0.4);
+    ctx.shadowColor = '#FF0000';
+    ctx.shadowBlur  = 28;
+    ctx.fillStyle   = '#FF3333';
+    ctx.font        = `900 ${Math.floor(W * 0.13)}px ${cinzel}`;
+    ctx.fillText('YOU', W / 2, H * 0.24);
+    ctx.fillStyle = '#FF5555';
+    ctx.fillText('DIED', W / 2, H * 0.36);
     ctx.restore();
 
-    ctx.fillStyle = '#FFD700';
-    ctx.font      = `${Math.floor(H * 0.026)}px ${font}`;
-    ctx.fillText(`Lives remaining: ${session.lives}`, W / 2, H * 0.56);
+    // Lives remaining panel
+    const panW = Math.floor(W * 0.78);
+    const panX = (W - panW) / 2;
+    const panY = H * 0.43;
+    const panH = Math.floor(H * 0.22);
+    ctx.fillStyle   = 'rgba(40,0,0,0.9)';
+    ctx.strokeStyle = '#881111';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath(); ctx.roundRect(panX, panY, panW, panH, 8); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(panX, panY, panW, panH, 8); ctx.stroke();
 
-    const pulse = 0.5 + Math.sin(this._frame * 0.1) * 0.5;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#664444';
+    ctx.font      = `${Math.floor(H * 0.019)}px ${font}`;
+    ctx.fillText('LIVES REMAINING', W / 2, panY + panH * 0.3);
+
+    // Heart icons
+    const hearts   = Math.max(0, session.lives);
+    const heartStr = hearts > 0 ? '♥ '.repeat(hearts).trim() : '✕  NONE';
+    ctx.fillStyle  = hearts > 0 ? '#FF4444' : '#664444';
+    ctx.font       = `bold ${Math.floor(H * 0.038)}px ${font}`;
+    ctx.fillText(heartStr, W / 2, panY + panH * 0.68);
+
+    // CTA
+    const pulse = 0.45 + Math.sin(this._frame * 0.12) * 0.55;
     ctx.save();
+    ctx.textAlign   = 'center';
     ctx.globalAlpha = pulse;
+    ctx.shadowColor = '#FF4444';
+    ctx.shadowBlur  = 10;
     ctx.fillStyle   = '#FF8888';
-    ctx.font        = `bold ${Math.floor(H * 0.028)}px ${font}`;
-    ctx.fillText('Tap to retry', W / 2, H * 0.78);
+    ctx.font        = `bold ${Math.floor(H * 0.03)}px ${cinzel}`;
+    ctx.fillText('▶  TAP TO RETRY  ◀', W / 2, H * 0.82);
     ctx.restore();
   }
 
@@ -877,29 +1133,59 @@ drawFromAtlas(key, x, y, size = T, offsetY = 0) {
 
   // ── LEVEL START ───────────────────────────────────────────
   _renderLevelStart(session) {
+    // Show blurred game behind
     this._renderGame(session);
-    this._renderOverlay('#000000', 0.75);
-    const ctx = this.ctx;
-    const W   = this.canvas.width;
-    const H   = this.canvas.height;
-    const font = '"Share Tech Mono", monospace';
+    this._renderOverlay('#000000', 0.78);
 
-    ctx.fillStyle = '#FFD700';
-    ctx.font      = `900 ${Math.floor(W * 0.08)}px "Cinzel", serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`LEVEL ${session.currentLevel + 1}`, W / 2, H * 0.42);
+    const ctx    = this.ctx;
+    const W      = this.canvas.width;
+    const H      = this.canvas.height;
+    const font   = '"Share Tech Mono", monospace';
+    const cinzel = '"Cinzel", serif';
+
+    this._drawHieroglyphBand(ctx, W, H * 0.34);
+    this._drawHieroglyphBand(ctx, W, H * 0.64);
+
+    // Level number
+    ctx.save();
+    ctx.textAlign   = 'center';
+    ctx.shadowColor = '#FF8800';
+    ctx.shadowBlur  = 16;
+    ctx.fillStyle   = '#664400';
+    ctx.font        = `${Math.floor(H * 0.02)}px ${font}`;
+    ctx.fillText('— ENTERING —', W / 2, H * 0.32);
+    ctx.restore();
+
+    ctx.save();
+    ctx.textAlign   = 'center';
+    ctx.shadowColor = '#FFD700';
+    ctx.shadowBlur  = 20;
+    ctx.fillStyle   = '#FFD700';
+    ctx.font        = `900 ${Math.floor(W * 0.115)}px ${cinzel}`;
+    ctx.fillText(`LEVEL`, W / 2, H * 0.44);
+    ctx.fillStyle   = '#FFA820';
+    ctx.shadowColor = '#FF8800';
+    ctx.fillText(`${session.currentLevel + 1}`, W / 2, H * 0.54);
+    ctx.restore();
 
     const levelName = LEVELS[session.currentLevel]?.name || 'The Deep Tombs';
-    ctx.fillStyle = '#CCAA44';
-    ctx.font      = `italic ${Math.floor(H * 0.022)}px "Cinzel", serif`;
-    ctx.fillText(levelName, W / 2, H * 0.48);
-
-    const pulse = 0.5 + Math.sin(this._frame * 0.1) * 0.5;
     ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#AA8833';
+    ctx.font      = `italic ${Math.floor(H * 0.026)}px ${cinzel}`;
+    ctx.fillText(levelName, W / 2, H * 0.66);
+    ctx.restore();
+
+    // Pulsing CTA
+    const pulse = 0.45 + Math.sin(this._frame * 0.12) * 0.55;
+    ctx.save();
+    ctx.textAlign   = 'center';
     ctx.globalAlpha = pulse;
+    ctx.shadowColor = '#88CCFF';
+    ctx.shadowBlur  = 10;
     ctx.fillStyle   = '#88CCFF';
-    ctx.font        = `bold ${Math.floor(H * 0.02)}px ${font}`;
-    ctx.fillText('Tap to begin', W / 2, H * 0.65);
+    ctx.font        = `bold ${Math.floor(H * 0.028)}px ${cinzel}`;
+    ctx.fillText('▶  TAP TO BEGIN  ◀', W / 2, H * 0.80);
     ctx.restore();
   }
 }

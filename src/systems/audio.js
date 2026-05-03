@@ -14,6 +14,7 @@ export class AudioSystem {
     this._bgNoteIdx = 0;
     this._bgTimer   = null;
     this._noiseBuffer = null;
+    this._noiseCtxRef = null;
   }
 
   _getCtx() {
@@ -57,13 +58,13 @@ export class AudioSystem {
   // Pre-allocated 0.5 s of white noise — reused by all _noise() calls to avoid GC spikes.
   _ensureNoiseBuffer() {
     const ctx = this._getCtx();
-    // Regenerate only if context changed (e.g. after a suspend/resume cycle).
-    if (this._noiseBuffer && this._noiseBuffer._ctx === ctx) return this._noiseBuffer;
+    // Regenerate only when the AudioContext instance changes (e.g. after suspend/resume).
+    if (this._noiseBuffer && this._noiseCtxRef === ctx) return this._noiseBuffer;
     const size   = Math.ceil(ctx.sampleRate * 0.5);
     const buffer = ctx.createBuffer(1, size, ctx.sampleRate);
     const data   = buffer.getChannelData(0);
     for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
-    buffer._ctx  = ctx; // tag for identity check
+    this._noiseCtxRef = ctx; // store reference separately — don't mutate native objects
     this._noiseBuffer = buffer;
     return buffer;
   }
@@ -206,9 +207,10 @@ export class AudioSystem {
     osc.stop(now + stepTime);
     
     this._bgNoteIdx++;
-    
-    // Schedule the next check in the near future
-    this._bgTimer = setTimeout(() => this._playBgmStep(), stepTime * 1000);
+
+    // Schedule next step against AudioContext clock to prevent drift under JS timer throttle.
+    const delayMs = Math.max(0, (now + stepTime - ctx.currentTime) * 1000 - 8);
+    this._bgTimer = setTimeout(() => this._playBgmStep(), delayMs);
   }
 
 

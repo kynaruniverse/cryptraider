@@ -9,17 +9,7 @@ import { Physics }     from './physics.js';
 import { Player }      from '../entities/player.js';
 import { EnemyManager }from '../entities/enemies.js';
 import { LEVELS }      from '../levels/levelData.js';
-
-// ── Storage abstraction (swap for Capacitor Preferences in native builds) ──
-const Storage = {
-  get(key, fallback = null) {
-    try { const v = localStorage.getItem(key); return v !== null ? v : fallback; }
-    catch { return fallback; }
-  },
-  set(key, value) {
-    try { localStorage.setItem(key, String(value)); } catch { /* quota / private mode */ }
-  },
-};
+import { Storage } from './storage.js';
 
 export class GameSession {
   constructor(eventBus, audio, input) { // ADDED input here
@@ -57,7 +47,8 @@ export class GameSession {
 
     this.currentLevel      = Math.max(0, Math.min(levelIndex, LEVELS.length - 1));
     this.timeLeft          = CONFIG.LEVEL_TIME;
-    this.crystalsDeposited = 0;
+    this.crystalsDeposited  = 0;
+    this.crystalsCollected  = 0;
     this.portalOpen        = false;
     this.effects           = [];
 
@@ -123,13 +114,28 @@ export class GameSession {
     if (!this.player.placeDynamite()) return;
 
     this.audio.placeBomb();
-    const { x, y } = this.player;
 
-    // Short fuse — explode after 1.5 s; deferred through physics queue (no GC closure heap growth).
+    // Dynamite position is captured at the moment of placement and stored
+    // on the session — NOT written to the grid cell the player stands on.
+    // This prevents moveEntity from copying the dynamite tile when player moves.
+    const bombX = this.player.bombX;
+    const bombY = this.player.bombY;
+
+    // Render a visual marker at the bomb position (grid cell behind player).
+    // Write to the cell the player just vacated — the cell the player was on
+    // before they stepped aside is stored as bombX/bombY in player.placeDynamite().
+    this.grid.set(bombX, bombY, TILE.DYNAMITE);
+    this.grid.dirtyCells.add(this.grid.idx(bombX, bombY));
+
     const activeLevel = this.currentLevel;
     this.physics._defer(() => {
       if (this.state === STATE.PLAYING && this.currentLevel === activeLevel && this.physics) {
-        this.physics.explode(x, y, 2);
+        // Clear the visual marker before exploding so explosion rendering is clean.
+        if (this.grid.get(bombX, bombY) === TILE.DYNAMITE) {
+          this.grid.set(bombX, bombY, TILE.EMPTY);
+          this.grid.dirtyCells.add(this.grid.idx(bombX, bombY));
+        }
+        this.physics.explode(bombX, bombY, 2);
         this.audio.explosion();
       }
     }, 1500);
@@ -150,7 +156,8 @@ export class GameSession {
       this._checkHighScore();
       if (type === TILE.CRYSTAL) {
         this.audio.collectCrystal();
-        this._checkAllCrystals(); // O(1) counter increment
+        // Increment collected count — deposit check happens separately at the machine.
+        this.crystalsCollected = (this.crystalsCollected || 0) + 1;
       } else {
         this.audio.collect();
       }
@@ -158,7 +165,20 @@ export class GameSession {
 
     on('player_at_machine', () => this._depositCrystal());
     
-    on('portal_opened', () => { if (this.physics) this.physics.shake(15); });
+    on('portal_opened', () => {
+      if (this.physics) this.physics.shake(15);
+      // Keep machine cells in dirtyCells every frame so renderer repaints
+      // the active machine state continuously (mirroring how animated cells work).
+      this._machinesDirtyInterval = setInterval(() => {
+        if (this.state !== STATE.PLAYING || !this.grid) {
+          clearInterval(this._machinesDirtyInterval);
+          return;
+        }
+        this.grid.findAll(TILE.MACHINE).forEach(({ x, y }) => {
+          this.grid.dirtyCells.add(this.grid.idx(x, y));
+        });
+      }, 100);
+    });
 
     on('player_entered_portal', () => {
       if (this.portalOpen) this._winLevel();
@@ -174,6 +194,14 @@ export class GameSession {
       this.audio.playerDie();
       this._loseLife();
     });
+
+    on('player_fall_death', () => {
+      if (this.state !== STATE.PLAYING) return;
+      this.audio.playerDie();
+      this._loseLife();
+    });
+
+    on('player_landed', () => { /* thud sound hook — extend audio later */ });
 
     on('player_died', () => {
       if (this.state !== STATE.PLAYING) return;
@@ -212,18 +240,15 @@ export class GameSession {
   }
 
   // ── Crystal / Portal logic ────────────────────────────────
-  _checkAllCrystals() {
-    // Increment the counter directly — avoids O(N) grid scan on every collect.
-    this.crystalsDeposited++;
-  }
 
   _depositCrystal() {
-    // Use the maintained counter — no O(N) scan required.
-    if (this.crystalsDeposited >= this.crystalsTotal) {
+    // Require the player to have collected all crystals before depositing opens the portal.
+    const collected = this.crystalsCollected || 0;
+    if (collected >= this.crystalsTotal) {
+      this.crystalsDeposited = collected;
       this._openPortal();
     } else {
-      // Optional: Add a "Need more crystals" sound/effect here
-      this.audio.denied && this.audio.denied();
+      this.audio.denied?.();
     }
   }
 
@@ -232,16 +257,21 @@ export class GameSession {
     if (this.portalOpen) return;
     this.portalOpen = true;
 
-    // Physically transform the tiles so Physics/Renderer recognize the state change
+    // Transform portal tiles → PORTAL_OPEN so the renderer shows active sprite.
     const portals = this.grid.findAll(TILE.PORTAL);
     portals.forEach(({ x, y }) => {
       this.grid.set(x, y, TILE.PORTAL_OPEN);
       this.grid.setMeta(x, y, { active: true, animFrame: 0 });
     });
 
+    // Mark machines dirty so the renderer repaints them as active/charged.
+    // setMeta already adds to dirtyCells; also force-add the cell index.
     const machines = this.grid.findAll(TILE.MACHINE);
     machines.forEach(({ x, y }) => {
       this.grid.setMeta(x, y, { active: true, charged: true });
+      // grid.setMeta already marks dirty — but also force-add animated cell
+      // index so it's redrawn every frame while portal is open.
+      this.grid.dirtyCells.add(this.grid.idx(x, y));
     });
 
     this.audio.portalOpen();
@@ -325,6 +355,10 @@ export class GameSession {
   _cleanupLevel() {
     this._unsubs.forEach(fn => fn());
     this._unsubs = [];
+    if (this._machinesDirtyInterval) {
+      clearInterval(this._machinesDirtyInterval);
+      this._machinesDirtyInterval = null;
+    }
 
     // Null all level-scoped objects so the GC can collect them immediately.
     // physics._pending may hold deferred closures that reference the old grid —

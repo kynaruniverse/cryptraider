@@ -23,6 +23,8 @@ export class EventBus {
       fn(data);
       this.off(event, wrapper);
     };
+    // Expose the original fn so callers can unsubscribe by original reference.
+    wrapper._original = fn;
     return this.on(event, wrapper);
   }
 
@@ -30,8 +32,8 @@ export class EventBus {
   off(event, fn) {
     const list = this._listeners.get(event);
     if (!list) return;
-    const idx = list.indexOf(fn);
-    // Tombstone: set to null instead of splicing — keeps array indices stable.
+    // Match by reference or by the _original property (handles once() wrappers).
+    const idx = list.findIndex(f => f === fn || f?._original === fn);
     if (idx !== -1) list[idx] = null;
   }
 

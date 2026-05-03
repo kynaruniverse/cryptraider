@@ -430,12 +430,19 @@ export class InputSystem {
 
   _emitDir(dir) {
     const now = Date.now();
-    // Prune stale entries first
+    // Drop stale head entries (shift is O(n) but queue max is 6 — acceptable;
+    // keep for clarity over a ring buffer given the tiny fixed size).
     while (this._dirQueue.length > 0 && now - this._dirQueue[0].ts > DIR_QUEUE_TTL) {
       this._dirQueue.shift();
     }
+    // Evict oldest if at capacity before pushing.
     if (this._dirQueue.length >= DIR_QUEUE_MAX) this._dirQueue.shift();
-    this._dirQueue.push({ dir, ts: now });
+    // Reuse a pooled entry object to avoid per-swipe allocation.
+    if (!this._dirEntryPool) this._dirEntryPool = Array.from({ length: DIR_QUEUE_MAX }, () => ({ dir: null, ts: 0 }));
+    const entry = this._dirEntryPool[this._dirQueue.length] || { dir: null, ts: 0 };
+    entry.dir = dir;
+    entry.ts  = now;
+    this._dirQueue.push(entry);
   }
 
   _emitAction(a) {

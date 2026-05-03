@@ -11,8 +11,8 @@ export const COLS = 11;
 export const ROWS = 17;
 export const CANVAS_W = TILE_SIZE * COLS; // 352
 // Calculate HUD based on a percentage of the play area for better mobile scaling
-export const HUD_OFFSET = Math.max(48, Math.floor(TILE_SIZE * 1.5)); 
-export const CANVAS_H = (TILE_SIZE * ROWS) + HUD_OFFSET;
+export const HUD_OFFSET = 44; // single source of truth — matches renderer and resizeCanvas
+export const CANVAS_H   = (TILE_SIZE * ROWS) + HUD_OFFSET;
 
 // --- Tile Type IDs ---
 export const TILE = Object.freeze({
@@ -89,6 +89,7 @@ export const CONFIG = Object.freeze({
   ENERGY_LOSS:    34,
   LEVEL_TIME:     300,
   TOTAL_LEVELS:   100,
+  SAFE_FALL_TILES: 2,
 });
 
 // --- Level Code Salt ---

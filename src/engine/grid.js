@@ -12,7 +12,8 @@ const FLAG = {
   PASSABLE: 1 << 2,
   GRAVITY:  1 << 3,
   COLLECT:  1 << 4,
-  DANGEROUS:1 << 5
+  DANGEROUS:1 << 5,
+  CLIMBABLE:1 << 6,  // tile is a ladder — player can be on it without falling
 };
 
 // Optimization: Property Lookup Table (O(1) access)
@@ -25,7 +26,7 @@ define(TILE.GRAVEL,   FLAG.SOLID | FLAG.GRAVITY);
 define(TILE.DIRT,     FLAG.DIGGABLE);
 define(TILE.SAND,     FLAG.DIGGABLE | FLAG.PASSABLE);
 define(TILE.EMPTY,    FLAG.PASSABLE);
-define(TILE.LADDER,   FLAG.PASSABLE);
+define(TILE.LADDER,   FLAG.PASSABLE | FLAG.CLIMBABLE);
 define(TILE.CRYSTAL,  FLAG.GRAVITY | FLAG.COLLECT);
 define(TILE.GEM,      FLAG.GRAVITY | FLAG.COLLECT);
 define(TILE.DYNAMITE, FLAG.GRAVITY | FLAG.DANGEROUS);
@@ -103,6 +104,7 @@ export class Grid {
   isPassable(x, y)       { return this.check(x, y, FLAG.PASSABLE); }
   isGravityAffected(x, y){ return this.check(x, y, FLAG.GRAVITY); }
   isDangerous(x, y)      { return this.check(x, y, FLAG.DANGEROUS); }
+  isClimbable(x, y)      { return this.check(x, y, FLAG.CLIMBABLE); }
 
   // ── Advanced Spatial Logic ────────────────────────────────
   
@@ -177,14 +179,22 @@ export class Grid {
 
   // ── State Management ──────────────────────────────────────
   
-  clearDirty() { 
-    this.dirtyCells.clear(); 
-    this.fullClearRequested = false; 
-
-    // Re-add cells that have ongoing animations so the renderer doesn't skip them
+  clearDirty() {
+    this.dirtyCells.clear();
+    this.fullClearRequested = false;
     for (let i = 0; i < this.meta.length; i++) {
       if (this.meta[i]?.falling) this.dirtyCells.add(i);
     }
+  }
+
+  /** Returns a Set covering every cell index; used by renderer on full-clear frames.
+   *  Reuses a cached Set instead of allocating a new one each call. */
+  allCells() {
+    if (!this._allCellsCache || this._allCellsCache.size !== this.cells.length) {
+      this._allCellsCache = new Set();
+      for (let i = 0; i < this.cells.length; i++) this._allCellsCache.add(i);
+    }
+    return this._allCellsCache;
   }
 
   serialize() {
@@ -231,6 +241,7 @@ export class Grid {
     
     this.fullClearRequested = true;
     this.dirtyCells.clear();
+    this._allCellsCache = null; // invalidate cached full-cell set on level load
     // console.log only in explicit debug builds — not in production.
     if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
       console.log(`Grid loaded: ${this.cols}x${this.rows}, Name: ${level.name || 'Unknown'}`);

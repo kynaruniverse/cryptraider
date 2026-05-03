@@ -37,18 +37,21 @@ class Enemy {
     const target = this.grid.get(nx, ny);
 
     if (target === TILE.PLAYER) {
-      // Impact logic: Don't move into the player, just trigger the event
       this.events.emit('enemy_touched_player', { x: nx, y: ny, type: this.type });
       return;
     }
 
-    // Use our optimized atomic move
+    // Mummy cannot dig — it only moves through already open cells.
+    // If somehow routed into a non-open cell, abort the move.
+    if (target !== TILE.EMPTY && target !== TILE.LADDER && target !== TILE.PLAYER) {
+      return;
+    }
+
+    // Move onto empty or ladder cell normally.
     this.grid.moveEntity(this.x, this.y, nx, ny);
     this.x = nx;
     this.y = ny;
   }
-
-
 
   kill() {
     if (!this.alive) return;
@@ -68,6 +71,14 @@ export class Mummy extends Enemy {
   }
 
   _think(px, py) {
+    // Fast-path: if already adjacent, move directly without running BFS.
+    const dx = px - this.x;
+    const dy = py - this.y;
+    if (Math.abs(dx) + Math.abs(dy) === 1) {
+      this._moveTo(px, py);
+      return;
+    }
+
     const next = this._bfsStep(px, py);
     if (!next) return;
     this._moveTo(next.x, next.y);
@@ -105,31 +116,41 @@ export class Mummy extends Enemy {
         const t = g.get(nx, ny);
         
         if (nx === px && ny === py) {
-          // Reconstruct first step
+          // Write the parent for nIdx NOW so the reconstruction chain is complete.
+          Mummy._parentMap[nIdx] = curr;
+
+          // Reconstruct the first step back from the player toward the mummy.
           let step = nIdx;
           let last = nIdx;
-          while (step !== startIdx && step !== -2) {
+          let guard = 0; // hard iteration cap prevents any future infinite loop
+          while (step !== startIdx && step !== -2 && guard++ < MAX_CELLS) {
             last = step;
             step = Mummy._parentMap[step];
+            // Safety: if we hit an unwritten cell the chain is broken — abort.
+            if (step < -2) break;
           }
-          // Reset shared buffers before returning so the next call starts clean.
+
+          // Reset shared buffers over the used range only.
           Mummy._queue.fill(0, 0, tail);
-          Mummy._parentMap.fill(-1);
+          Mummy._parentMap.fill(-1, 0, tail);
           return { x: last % cols, y: (last / cols) | 0 };
         }
 
-        if (t === TILE.EMPTY || t === TILE.DIRT || t === TILE.SAND || t === TILE.LADDER) {
+        if (t === TILE.EMPTY || t === TILE.LADDER) {
           Mummy._parentMap[nIdx] = curr;
-          Mummy._queue[tail++] = nIdx;
+          // Guard before write — tail must not exceed the static buffer size.
+          if (tail < MAX_CELLS) {
+            Mummy._queue[tail++] = nIdx;
+          }
         }
       }
-      // SAFETY: If the search space gets too large or unreachable, 
-      // stop the search to prevent the browser from freezing.
-      if (tail >= MAX_CELLS || head >= MAX_CELLS) break;
+      // Stop if we have exhausted the search space.
+      if (tail >= MAX_CELLS) break;    
     }
 
-    // Reset only the portion of the queue that was actually used.
+    // Reset both shared buffers over the used range — prevents state leak into next call.
     Mummy._queue.fill(0, 0, tail);
+    Mummy._parentMap.fill(-1, 0, tail);
     return null;
 
   }
