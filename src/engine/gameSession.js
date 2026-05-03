@@ -156,8 +156,8 @@ export class GameSession {
       this._checkHighScore();
       if (type === TILE.CRYSTAL) {
         this.audio.collectCrystal();
-        // Increment collected count — deposit check happens separately at the machine.
-        this.crystalsCollected = (this.crystalsCollected || 0) + 1;
+        // Increment collected count — deposit check happens at the machine.
+        this.crystalsCollected++;
       } else {
         this.audio.collect();
       }
@@ -233,6 +233,13 @@ export class GameSession {
     on('object_fell', ({ to, type }) => {
       if (type === TILE.BOULDER) this.audio.boulder();
     });
+
+    // BUG FIX: A crystal destroyed by a boulder or explosion must reduce
+    // crystalsTotal so the level remains winnable. Without this, the machine
+    // would require depositing more crystals than exist in the level.
+    on('crystal_destroyed', () => {
+      if (this.crystalsTotal > 0) this.crystalsTotal--;
+    });
   }
 
   _bindPersistentEvents() {
@@ -243,9 +250,9 @@ export class GameSession {
 
   _depositCrystal() {
     // Require the player to have collected all crystals before depositing opens the portal.
-    const collected = this.crystalsCollected || 0;
-    if (collected >= this.crystalsTotal) {
-      this.crystalsDeposited = collected;
+    // Edge case: if the level has no crystals (crystalsTotal === 0), open immediately.
+    if (this.crystalsTotal === 0 || this.crystalsCollected >= this.crystalsTotal) {
+      this.crystalsDeposited = this.crystalsCollected;
       this._openPortal();
     } else {
       this.audio.denied?.();

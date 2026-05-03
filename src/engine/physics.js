@@ -126,25 +126,30 @@ export class Physics {
     const occupant = this.grid.get(tx, ty);
     const meta = this.grid.getMeta(fx, fy) || {};
 
-    // Condition: Target must be Empty OR an entity we can impact
-    const isTargetEmpty = occupant === TILE.EMPTY;
-    const canImpact = !!this.impactRules[occupant];
+    // Condition: Target must be Empty OR a Ladder (gravity objects fall through
+    // ladder tiles — a crystal resting on a ladder cell blocks the player from
+    // ever reaching it) OR an entity we can impact.
+    const isTargetEmpty  = occupant === TILE.EMPTY;
+    const isTargetLadder = occupant === TILE.LADDER;
+    const canImpact      = !!this.impactRules[occupant];
 
     // TRICK: Only trigger impact if we were already "falling" or if moving directly down
-    if (isTargetEmpty || (canImpact && (meta.falling || dy > 0))) {
-      
+    if (isTargetEmpty || isTargetLadder || (canImpact && (meta.falling || dy > 0))) {
+
       if (canImpact) {
         this.impactRules[occupant](tx, ty, type);
       }
 
-      // Re-verify space is clear (in case impact didn't clear it yet)
-      if (this.grid.get(tx, ty) === TILE.EMPTY) {
+      // Re-verify space is clear (in case impact didn't clear it yet).
+      // Ladder tiles are never cleared by impact rules, so treat them as clear too.
+      const targetNow = this.grid.get(tx, ty);
+      if (targetNow === TILE.EMPTY || targetNow === TILE.LADDER) {
         meta.falling = true;
         this.grid.moveEntity(fx, fy, tx, ty);
-        
+
         // Mark new index as processed so it doesn't move again this tick
         processedSet.add(ty * this.grid.cols + tx);
-        
+
         this.events.emit('object_fell', { from: { x: fx, y: fy }, to: { x: tx, y: ty }, type });
         return true;
       }

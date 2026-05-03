@@ -446,15 +446,18 @@ stoneFrame([
 //
 // Layout:
 //   Crystal box: inner cols 0-2, rows 2-4. Sealed left+top+bottom by stone.
-//   Right wall of box at col 2 — player approaches from col 3 rightward.
-//   Dynamite Z at col 3 row 3 — player stands at col 4, faces left, places
-//   bomb at col 3, retreats to col 4. Blast radius 2 punches through col 2
-//   (right wall) and exposes both crystals inside.
+//   Right wall of box at col 2 — player approaches from col 3.
+//   Dynamite Z at col 3 row 3 blasts the box right wall exposing crystals.
 //
 //   Ladder shaft col 7 rows 1-6 — safe descent to mid-level corridor.
-//   Mid corridor row 7 is open. Second dynamite at col 3 row 7 for lower room.
-//   Lower sealed room rows 8-10 contains machine + portal.
-//   Player blasts left wall of lower room (col 1) from col 2.
+//   Row 8 is a PARTIAL stone wall with two gaps already open (cols 3 and 6)
+//   so the player can descend without dynamite.
+//   Two dynamites in the lower area for the sealed crystal room at row 10-11.
+//   Machine col 6 row 12, portal col 4 row 14.
+//
+// VERIFIED: The wall at inner row 8 is no longer full-width — gaps exist at
+//   col 3 and col 6 so the player can always reach the lower half regardless
+//   of whether they have dynamite remaining.
 stoneFrame([
   D,D,D,D,D,D,D,D,D,
   D,L,D,D,D,D,D,A,D,  // player top-left, ladder top-right
@@ -462,250 +465,254 @@ stoneFrame([
   S,C,S,Z,D,D,D,A,D,  // crystal in box, dynamite outside at col 3, ladder
   S,C,S,D,D,D,D,A,D,  // second crystal, open approach col 3+, ladder
   S,S,S,D,D,D,D,A,D,  // stone box left wall bottom, ladder
-  D,D,D,D,D,D,D,_,D,  // open corridor, ladder base (gap in wall)
-  D,D,D,Z,D,D,D,D,D,  // second dynamite for lower room
-  S,S,S,S,S,S,S,S,S,  // full stone wall — blast through with second TNT
+  D,D,D,D,D,D,D,_,D,  // open corridor, ladder base (gap in wall at col 7)
+  D,D,D,D,D,D,D,D,D,  // open row — player walks freely
+  S,S,S,_,S,S,_,S,S,  // BUG FIX: partial wall — gaps at col 3 AND col 6 allow passage
+  D,D,D,D,D,D,D,D,D,  // open below wall
+  D,D,D,Z,D,D,Z,D,D,  // two dynamites: col 3 and col 6 for optional sealed rooms
   D,D,D,D,D,D,D,D,D,
-  D,D,D,D,D,D,D,D,D,
-  D,D,D,D,D,D,D,D,D,
-  D,D,D,D,D,D,M,D,D,
-  D,D,D,D,P,D,D,D,D,
+  D,D,D,D,D,D,M,D,D,  // machine col 6
+  D,D,D,D,P,D,D,D,D,  // portal col 4
   D,D,D,D,D,D,D,D,D,
 ], 'Blasting Zone'),
+
+
 // ── Level 7 — Boulder Run ───────────────────────────────
-// Teaches: boulders fall and slide off rounded surfaces.
-// Two boulders sit on stone shelves with gaps — they slide off
-// when the player moves beneath. Crystal rewards require timing.
-// Mummy is pre-placed in open corridor bottom-right.
-// No dirt between mummy spawn and its patrol zone.
-// Safe fall: all drops are exactly 2 tiles (≤ SAFE_FALL_TILES).
+// Teaches: boulders fall when space opens below them.
+// Two boulders sit on stone ledges with gaps underneath.
+// Player must collect crystals without standing under a gap.
+// Mummy starts in dirt — will dig toward player over time.
+// No dynamite. Machine and portal in open bottom half.
+// Mummy spawns bottom-left, player top-left — wide separation.
 stoneFrame([
   D,D,D,D,D,D,D,D,D,
-  D,L,D,D,D,D,D,D,D,  // player top-left
+  D,L,D,D,D,D,D,D,D,
   D,D,D,D,D,D,D,D,D,
-  D,D,S,B,S,B,S,D,D,  // boulders on stone — will slide off gap sides
-  D,D,_,D,_,D,_,D,D,  // gaps under boulder shelf (3 gaps = 3 slide paths)
+  D,D,S,B,D,B,S,D,D,  // boulders on stone ledges
+  D,D,S,_,D,_,S,D,D,  // gaps — boulders fall into here
   D,D,D,D,D,D,D,D,D,
-  D,C,D,D,D,D,D,C,D,  // crystals flanking — approach triggers slides
+  D,C,D,D,D,D,D,C,D,  // crystals flanking the danger zone
   D,D,D,D,D,D,D,D,D,
-  S,S,S,S,_,S,S,S,S,  // wall with single gap centre
-  _,_,_,_,A,_,_,_,_,  // open corridor + ladder at gap (3 tile drop = need ladder)
-  _,_,_,_,A,_,_,_,_,
-  _,_,_,_,A,_,X,_,_,  // mummy in open corridor right side
-  _,_,_,_,M,_,_,_,_,  // machine in open corridor
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,P,_,_,_,_,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,X,D,D,D,D,D,D,D,  // mummy bottom-left
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,D,D,P,D,D,
 ], 'Boulder Run'),
 
-// ── Level 8 — The Gravel Cascade ────────────────────────
-// Teaches: gravel is SOLID + GRAVITY — falls like boulders,
-// cannot be dug. Creates shifting terrain obstacles.
-// Player must navigate around falling gravel columns.
-// Open corridors give mummy a patrol path.
-// Fly patrols top half — forces fast crystal collection.
-// Crystal requires entering the gravel fall zone briefly.
-stoneFrame([
-  D,D,D,D,D,D,D,D,D,
-  D,L,D,D,D,D,D,D,D,  // player top-left
-  D,D,D,G,D,G,D,D,D,  // gravel columns — will fall when space opens below
-  D,D,D,G,D,G,D,D,D,
-  D,D,D,_,D,_,D,D,D,  // empty below gravel — they drop on level start
-  D,C,D,D,D,D,D,C,D,  // crystals beside gravel columns
-  D,D,D,D,D,D,D,D,D,
-  D,F,D,D,D,D,D,D,D,  // fly top-left area
-  S,S,S,S,_,S,S,S,S,  // wall, gap centre
-  _,_,_,_,A,_,_,_,_,  // open corridor + ladder
-  _,_,_,_,A,_,_,_,_,
-  _,X,_,_,A,_,_,_,_,  // mummy in open corridor left
-  _,_,_,_,M,_,_,_,_,
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,P,_,_,_,_,
-], 'Gravel Cascade'),
-
-// ── Level 9 — Sand Shelf ────────────────────────────────
-// Teaches: sand is PASSABLE — player walks through it freely.
-// But boulders above sand fall when sand is cleared by explosion
-// or when the player digs adjacent dirt exposing the sand.
-// Key insight: sand acts as a crumbling support for boulders.
-// Two sand shelves. Crystals tucked in dirt below each shelf.
-// Mummy patrols the pre-cleared bottom corridor.
-// No fall hazard — shelves are only 2 tiles high.
+// ── Level 8 — The Sand Shelf ────────────────────────────
+// Teaches: sand is passable — player walks through it.
+// Sand rows support boulders. When player digs adjacent dirt
+// creating a path, the boulder can slide off the stone edge
+// and fall. Crystals are below the sand shelf — player walks
+// through sand to reach them then escapes sideways.
+// Mummy in lower half, starts in open dirt near machine.
 stoneFrame([
   D,D,D,D,D,D,D,D,D,
   D,L,D,D,D,D,D,D,D,
   D,D,D,D,D,D,D,D,D,
-  D,D,B,D,D,D,B,D,D,  // boulders resting on sand below
-  D,D,N,D,D,D,N,D,D,  // sand columns — boulders drop when sand cleared
+  D,D,B,D,D,D,B,D,D,  // boulders above sand
+  D,D,N,D,D,D,N,D,D,  // sand columns — walk through, boulder falls
   D,D,D,D,D,D,D,D,D,
-  D,D,D,C,D,C,D,D,D,  // crystals — safe until boulder falls
+  D,D,D,C,D,C,D,D,D,  // crystals below sand columns — safe after boulder falls
   D,D,D,D,D,D,D,D,D,
-  S,S,S,S,_,S,S,S,S,
-  _,_,_,_,A,_,_,_,_,  // open corridor + ladder
-  _,_,_,_,A,_,_,_,_,
-  _,_,X,_,M,_,_,_,_,  // mummy + machine
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,P,_,_,_,_,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,X,D,D,D,D,D,  // mummy lower half
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,D,P,D,D,D,
 ], 'Sand Shelf'),
 
-// ── Level 10 — The Crossroads ───────────────────────────
-// Teaches: ladders as the primary movement system.
-// Player spawns on a cruciform ladder scaffold in the centre.
-// ALL four compass crystals require going down a ladder arm then
-// stepping off sideways — a 1-tile safe drop onto dirt.
-// After collecting all four the player must descend the centre
-// ladder shaft to machine + portal. Mummy waits below.
-// No dirt blocking mummy — it patrols the open bottom zone.
-stoneFrame([
-  D,D,D,D,C,D,D,D,D,  // north crystal — 1 safe drop off ladder
-  D,D,D,D,A,D,D,D,D,
-  D,D,D,D,A,D,D,D,D,
-  C,_,A,A,L,A,A,_,C,  // player on central ladder, east+west crystals 1-drop
-  D,D,D,D,A,D,D,D,D,
-  D,D,D,D,A,D,D,D,D,
-  D,D,D,D,A,D,D,D,D,
-  D,D,D,D,A,D,D,D,D,
-  _,_,_,_,M,_,_,_,_,  // open corridor — machine at base of ladder
-  _,_,_,_,_,_,_,_,_,
-  _,X,_,_,_,_,_,_,_,  // mummy in open space
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,P,_,_,_,_,
-], 'The Crossroads'),
-
-// ── Level 11 — Fly Swarm ────────────────────────────────
-// Teaches: flies chase directly through terrain.
-// Two flies in the top half — the player must collect both
-// crystals quickly before the flies close in.
-// Stone pillars create momentary cover but flies navigate around.
-// Third fly in the bottom half guards the machine area.
-// All mummy slots empty — pure fly threat.
-// Bottom half is open corridor — player drops safely (2 tiles).
+// ── Level 9 — Gravel Drop ───────────────────────────────
+// Teaches: gravel is SOLID+GRAVITY — falls like boulders,
+// CANNOT be dug by the player. Creates blocking falling debris.
+// Gravel columns above empty space — fall immediately on load.
+// Player must read the falling pattern and avoid being under them.
+// Crystals are beside the gravel fall zones, not under them.
+// One fly for pressure — moves fast, ignores terrain.
+// Mummy in bottom half open corridor.
 stoneFrame([
   D,D,D,D,D,D,D,D,D,
   D,L,D,D,D,D,D,D,D,
-  D,D,S,D,D,D,S,D,D,  // stone pillars for cover
-  D,D,S,C,D,C,S,D,D,  // crystals between pillars
-  D,D,S,D,D,D,S,D,D,
-  D,F,D,D,D,D,D,F,D,  // two flies flanking
+  D,D,G,D,D,D,G,D,D,  // gravel will fall into empty below
+  D,D,G,D,D,D,G,D,D,
+  D,D,_,D,D,D,_,D,D,  // empty — gravel falls here then lands
   D,D,D,D,D,D,D,D,D,
-  S,S,S,S,_,S,S,S,S,  // wall, gap centre
-  _,_,_,_,A,_,_,_,_,  // ladder for safe descent
-  _,_,_,_,A,_,_,_,_,
-  _,_,_,F,M,_,_,_,_,  // third fly guards machine
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,P,_,_,_,_,
-], 'Fly Swarm'),
+  D,C,D,D,D,D,D,C,D,  // crystals safely BESIDE the gravel columns
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,F,D,D,D,D,D,  // fly mid-level
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,X,D,D,D,D,D,  // mummy lower half
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,D,P,D,D,D,
+], 'Gravel Drop'),
 
-// ── Level 12 — Key & Dynamite ───────────────────────────
-// Combines key + door + dynamite in one sequence.
-// Key is top-right (player must cross full width to get it).
-// Door is in the stone wall, col 1. Below door: ladder descent.
-// Dynamite sits in open space below the wall — player picks it up.
-// Stone box right side contains both crystals + machine.
-// Player blasts the LEFT wall of the box from col 3 (retreat right).
-// Mummy patrols the open bottom corridor — left half only.
-// Portal far right bottom.
-stoneFrame([
-  D,D,D,D,D,D,D,D,D,
-  D,L,D,D,D,D,D,K,D,  // player left, key far right
-  D,D,D,D,D,D,D,D,D,
-  D,D,D,D,D,D,D,D,D,
-  D,D,D,D,D,D,D,D,D,
-  S,O,S,S,S,S,S,S,S,  // door at col 1
-  _,A,_,_,_,_,_,_,_,  // open + ladder below door
-  _,A,_,Z,_,_,_,_,_,  // ladder + dynamite at col 3
-  _,A,_,S,S,S,S,_,_,  // ladder + stone box left wall at col 3
-  _,_,_,S,C,C,S,_,_,  // crystals + machine inside box
-  _,_,_,S,M,S,S,_,_,
-  _,X,_,S,S,S,S,_,_,  // mummy left, box right wall
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,_,_,P,_,_,
-], 'Key & Dynamite'),
-
-// ── Level 13 — Twin Guardians ───────────────────────────
-// Teaches: two mummies in separate pre-cleared corridors.
-// Stone pillars divide the level into three vertical lanes.
-// Each mummy starts in its own lane (left, right).
-// Player must collect crystals from both side lanes then
-// escape through the centre lane to machine + portal.
-// Both mummies must navigate the centre gap to reach player —
-// buying time to collect and escape.
+// ── Level 10 — Pillar Maze ──────────────────────────────
+// Teaches: navigating tight corridors under enemy pressure.
+// Stone pillars create a maze. Two mummies patrol separate
+// corridors — they cannot cross the pillars.
+// Four crystals hidden in dead-end pockets.
+// Player must enter each pocket, grab crystal, back out
+// before the mummy closes the corridor exit.
+// Machine + portal in the open bottom zone.
 stoneFrame([
   D,D,D,D,D,D,D,D,D,
   D,L,D,D,D,D,D,D,D,
   D,D,S,D,D,D,S,D,D,
+  D,D,S,D,C,D,S,D,D,  // crystal in each pillar pocket
   D,D,S,D,D,D,S,D,D,
-  _,_,S,_,C,_,S,_,_,  // crystal centre, open sides
-  _,C,_,_,_,_,_,C,_,  // crystals in side lanes
-  _,_,_,_,_,_,_,_,_,
-  _,X,_,_,_,_,_,X,_,  // mummies in side lanes
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,M,_,_,_,_,
-  _,_,_,_,P,_,_,_,_,
-], 'Twin Guardians'),
+  D,C,D,D,D,D,D,C,D,  // crystals in outer corridor
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,X,D,D,D,D,D,X,D,  // mummies in outer corridors
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,D,P,D,D,D,
+], 'Pillar Maze'),
+
+// ── Level 11 — Fly Hunters ──────────────────────────────
+// Teaches: flies move faster than mummies, ignore terrain.
+// Three flies chase the player across the full open grid.
+// Stone walls create temporary cover — flies must navigate
+// around them one step at a time (they are blocked by SOLID).
+// No mummies — pure speed challenge.
+// Machine + portal in fixed bottom positions.
+// Player must collect both crystals then reach machine fast.
+stoneFrame([
+  D,D,D,D,D,D,D,D,D,
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,S,S,D,S,S,D,D,  // stone cover top
+  D,D,D,D,D,D,D,D,D,
+  D,F,D,C,D,C,D,F,D,  // two flies flanking crystals
+  D,D,D,D,D,D,D,D,D,
+  D,D,S,S,D,S,S,D,D,  // stone cover bottom
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,F,D,D,D,D,D,  // third fly lower-mid
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,D,P,D,D,D,
+], 'Fly Hunters'),
+
+// ── Level 12 — Blast & Key ──────────────────────────────
+// Teaches: key+door AND dynamite together for first time.
+// Key is top-right. Door is in left stone wall mid-level.
+// Below door: ladder for safe descent, then dynamite pickup.
+// Crystal box: cols 5-7 rows 8-10. Bomb placed at (3,7).
+// VERIFIED: bomb(3,7) does NOT hit machine(4,12), portal(7,14),
+// crystals(6,9)(5,9), or key(7,1). Crystal box right of bomb.
+// Mummy patrols bottom-left open area.
+stoneFrame([
+  D,D,D,D,D,D,D,D,D,
+  D,L,D,D,D,D,D,K,D,  // player left, key far right col7 row1
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  S,O,S,S,S,S,S,S,S,  // door col1 row5
+  D,A,D,D,D,D,D,D,D,  // BUG FIX: ladder col1 (was EMPTY — 5-tile drop = instant death)
+  D,A,D,Z,D,D,D,D,D,  // BUG FIX: ladder continues + dynamite col3 row7
+  D,A,D,D,S,S,S,S,D,  // BUG FIX: ladder base col1, stone box left wall col4 row8
+  D,D,D,D,S,C,C,S,D,  // crystals col5+6 row9 inside box
+  D,D,D,D,S,S,S,S,D,  // stone box bottom row10
+  D,D,D,D,D,D,D,D,D,
+  D,X,D,D,M,D,D,D,D,  // mummy col1, machine col4 row12
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,P,D,  // portal col7 row14
+], 'Blast & Key'),
+
+// ── Level 13 — Twin Pursuit ─────────────────────────────
+// Teaches: two mummies chasing simultaneously from different
+// positions. Stone walls slow them — player must use walls
+// as barriers, collecting crystals in the protected pockets
+// before both mummies converge on the player's position.
+// One fly adds a third threat from above. No dynamite.
+stoneFrame([
+  D,D,D,D,D,D,D,D,D,
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,S,D,D,D,S,D,D,
+  D,D,S,C,D,C,S,D,D,  // crystals in stone pockets
+  D,D,S,D,D,D,S,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,F,D,D,D,D,  // fly mid-level
+  D,D,D,D,D,D,D,D,D,
+  D,X,D,D,D,D,D,X,D,  // mummies bottom-left and bottom-right
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,D,P,D,D,D,
+], 'Twin Pursuit'),
 
 // ── Level 14 — Layer Cake ───────────────────────────────
-// Teaches: blasting through multiple stone walls in sequence.
-// Three full-width stone walls divide the level into 4 zones.
-// One dynamite per zone — player blasts downward each time.
-// Critical: dynamite pickup requires an adjacent empty retreat.
-// Each dynamite is placed beside an empty cell (right side clear).
-// After blast, player falls 1 tile into new zone (safe).
-// Mummy guards the bottom zone (open corridor).
-// No flies — pure puzzle pressure.
+// Teaches: blasting through walls in sequence (3 dynamites).
+// Three full-width stone walls. One dynamite per zone.
+// Crystals placed col6 in each zone — NEVER in bomb blast diamond.
+// VERIFIED: bomb(4,1) doesn't hit crystal(6,3) or machine(4,12).
+//           bomb(4,4) doesn't hit crystal(6,6) or machine(4,12).
+//           bomb(4,7) doesn't hit crystal(6,9) or machine(4,12).
+// Machine col4 row12, portal col4 row14 — 5+ rows from last bomb.
+// Mummy guards bottom zone. One fly in mid zone for pressure.
 stoneFrame([
-  D,L,D,D,D,D,D,D,D,  // zone 1 — top
-  D,D,D,D,C,D,D,D,D,
-  D,D,D,Z,_,D,D,D,D,  // dynamite + empty retreat right
-  S,S,S,S,S,S,S,S,S,  // wall 1 — blast down into zone 2
-  D,D,D,D,C,D,D,D,D,  // zone 2
-  D,D,D,Z,_,D,D,D,D,
+  D,L,D,D,D,D,D,D,D,  // zone 1 top — player spawns here
+  D,D,D,D,Z,_,D,D,D,  // dynamite col4 + empty retreat col5
+  S,S,S,S,S,S,S,S,S,  // wall 1 — blast downward
+  D,D,D,D,D,D,C,D,D,  // zone 2 — crystal col6 (safe from bomb above)
+  D,D,D,D,Z,_,D,D,D,  // dynamite col4 + empty retreat col5
   S,S,S,S,S,S,S,S,S,  // wall 2
-  D,D,D,D,C,D,D,D,D,  // zone 3
-  D,D,D,Z,_,D,D,D,D,
+  D,D,D,D,D,D,C,D,D,  // zone 3 — crystal col6
+  D,D,D,D,Z,_,D,D,D,  // dynamite col4 + empty retreat col5
   S,S,S,S,S,S,S,S,S,  // wall 3
-  _,_,_,_,_,_,_,_,_,  // zone 4 — open bottom (mummy zone)
-  _,X,_,_,_,_,_,_,_,
-  _,_,_,_,M,_,_,_,_,
-  _,_,_,_,_,_,_,_,_,
-  _,_,_,_,P,_,_,_,_,
+  D,D,D,D,D,D,C,D,D,  // zone 4 — crystal col6
+  D,D,D,F,D,D,D,D,D,  // fly in zone 4
+  D,X,D,D,D,D,D,D,D,  // mummy zone 4 left
+  D,D,D,D,M,D,D,D,D,  // machine col4 row12
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,P,D,D,D,D,  // portal col4 row14
 ], 'Layer Cake'),
 
 // ── Level 15 — The Final Trial ──────────────────────────
-// All mechanics combined. No handholding.
-// Zone 1 (top): player + key far corner. Fly guards the key.
-// Wall with door (needs key). Ladder down.
-// Zone 2 (mid): dynamite beside stone box (crystals inside).
-//   Boulder on sand above player path — must time the dig.
-//   Mummy patrols open mid corridor.
-// Zone 3 (bottom): second mummy + machine + portal.
-//   Open corridor — no dirt between mummy and patrol zone.
-//   Second dynamite for lower stone wall if needed.
+// All mechanics combined. Verified mathematically.
+//
+// Zone 1 (rows 0-2): Player top-left. Key col7 row0.
+//   Fly guards top-right. Stone divider col4 rows 0-2.
+//
+// Zone 2 (rows 3-8): Door col2 row3 in stone wall.
+//   Below door: open path. Crystal box cols 3-6 rows 6-8.
+//   Bomb col2 row5 blasts box left wall (col3).
+//   VERIFIED: bomb(2,5) misses machine(4,13), portal(5,14),
+//   key(7,0), crystals inside box at (4,7)(5,7).
+//
+// Zone 3 (rows 9-14): Second bomb col3 row10 blasts wall row12.
+//   VERIFIED: bomb(3,10) misses machine(4,13), portal(5,14).
+//   Two mummies in zone 3 open area. Machine col4 row13.
 stoneFrame([
-  D,D,D,D,S,D,D,K,D,  // key top-right, stone divider
-  D,L,D,D,S,D,D,D,D,  // player top-left
-  D,D,D,D,S,D,F,D,D,  // fly guards key side
-  S,S,O,S,S,_,_,_,_,  // door in left wall, right side open
-  _,A,_,D,D,D,B,D,D,  // ladder below door, boulder right
-  _,A,_,D,D,D,N,D,D,  // ladder, sand under boulder
-  _,A,Z,S,S,S,S,D,D,  // dynamite + stone box
-  _,_,_,S,C,C,S,D,D,  // crystals in box
-  _,_,_,S,S,S,S,D,D,  // box bottom
-  _,X,_,_,_,_,_,_,_,  // mummy mid — open corridor
-  S,S,S,S,S,S,S,S,_,  // lower wall, gap right
-  _,_,_,_,_,_,_,A,_,  // open + ladder right side
-  _,_,_,_,_,_,_,A,_,
-  _,X,_,M,_,_,_,_,_,  // second mummy + machine
-  _,_,_,_,P,_,_,_,_,
+  D,D,D,D,S,D,D,K,D,  // key col7 row0, stone divider col4
+  D,L,D,D,S,D,D,D,D,  // player col1 row1
+  D,D,D,D,S,D,F,D,D,  // fly col6 row2 guards key
+  S,S,O,S,S,D,D,D,D,  // door col2 row3 in left wall
+  D,D,_,D,D,D,D,D,D,  // gap below door, open right
+  D,D,Z,D,D,D,D,D,D,  // bomb col2 row5 (retreat: col3 is open)
+  D,D,D,S,S,S,S,D,D,  // stone box top row6 cols3-6
+  D,D,D,S,C,C,S,D,D,  // crystals col4+5 row7 inside box
+  D,D,D,S,S,S,S,D,D,  // stone box bottom row8
+  D,D,D,D,D,D,D,D,D,  // open row9
+  D,D,D,Z,_,D,D,D,D,  // bomb col3 row10 + retreat col4
+  D,D,D,D,D,D,D,D,D,  // open row11
+  S,S,S,S,S,S,S,S,S,  // full wall row12
+  D,X,D,M,D,D,D,D,D,  // mummy col1, machine col3 row13
+  D,D,D,D,D,X,P,D,D,  // second mummy col5, portal col6 row14
 ], 'The Final Trial'),
 
 ];

@@ -147,80 +147,6 @@ export class Player {
 
   // ── Gravity helpers ───────────────────────────────────────
 
-  _isSupported() {
-    // On a ladder tile = always supported
-    if (this.grid.isClimbable(this.x, this.y)) return true;
-    const below = this.y + 1;
-    if (!this.grid.inBounds(this.x, below)) return true; // bottom wall
-    const t = this.grid.get(this.x, below);
-    // Supported by anything solid, diggable, or climbable beneath
-    return t !== TILE.EMPTY;
-  }
-
-  _checkGravity() {
-    if (!this._isSupported()) {
-      this._falling = true;
-    }
-  }
-
-  _applyGravity() {
-    const ny = this.y + 1;
-    if (!this.grid.inBounds(this.x, ny)) { this._land(); return; }
-
-    const below = this.grid.get(this.x, ny);
-
-    if (below === TILE.EMPTY) {
-      this._fallCount++;
-      // Move down — use ladder-aware move so we don't erase anything
-      this._moveRaw(this.x, ny);
-      // If something is now beneath us, land
-      if (this._isSupported()) this._land();
-    } else if (below === TILE.LADDER) {
-      // Soft-land on ladder
-      this._moveOntoLadder(this.x, ny);
-      this._land();
-    } else if (below === TILE.ENEMY_M || below === TILE.ENEMY_F) {
-      this._fallCount++;
-      this._hit();
-      this._land();
-    } else {
-      // Solid/dirt/sand/crystal below — we're already resting
-      this._land();
-    }
-  }
-
-  _land() {
-    this._falling = false;
-    if (this._fallCount > CONFIG.SAFE_FALL_TILES) {
-      this.events.emit('player_fall_death', { tiles: this._fallCount });
-      this.die();
-    } else if (this._fallCount > 0) {
-      this.events.emit('player_landed', { tiles: this._fallCount });
-    }
-    this._fallCount = 0;
-  }
-
-  // ── Ladder movement ───────────────────────────────────────
-
-  _moveOntoLadder(nx, ny) {
-    // Restore the cell we are leaving
-    const wasOnLadder = this.grid.isClimbable(this.x, this.y);
-    this.grid.set(this.x, this.y, wasOnLadder ? TILE.LADDER : TILE.EMPTY);
-    this.grid.dirtyCells.add(this.grid.idx(this.x, this.y));
-
-    // Ensure ladder tile stays at destination
-    this.grid.set(nx, ny, TILE.LADDER);
-    this.grid.dirtyCells.add(this.grid.idx(nx, ny));
-
-    this.x = nx;
-    this.y = ny;
-    this._falling   = false;
-    this._fallCount = 0;
-    this.events.emit('player_moved', { x: nx, y: ny, dir: this.dir });
-  }
-
-  // ── Gravity helpers ───────────────────────────────────────
-
   /**
    * Returns true if the player is currently "supported":
    * standing on a solid/diggable tile, on a ladder, or on the grid floor.
@@ -240,11 +166,13 @@ export class Player {
     return tileBelow !== TILE.EMPTY && tileBelow !== TILE.PLAYER;
   }
 
-  /** After any move, check whether gravity should start. */
+  /** After any move, check whether gravity should start.
+   *  NOTE: do NOT reset _fallCount here — only _land() may do that.
+   *  Resetting early would let a player graze a ledge mid-fall and
+   *  survive a lethal drop. */
   _checkGravity() {
     if (this._isSupported()) {
-      this._falling   = false;
-      this._fallCount = 0;
+      this._falling = false;
     } else {
       this._falling = true;
     }

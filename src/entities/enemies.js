@@ -42,15 +42,27 @@ class Enemy {
     }
 
     // Mummy cannot dig — it only moves through already open cells.
-    // If somehow routed into a non-open cell, abort the move.
-    if (target !== TILE.EMPTY && target !== TILE.LADDER && target !== TILE.PLAYER) {
+    if (target !== TILE.EMPTY && target !== TILE.LADDER) {
       return;
     }
 
-    // Move onto empty or ladder cell normally.
-    this.grid.moveEntity(this.x, this.y, nx, ny);
-    this.x = nx;
-    this.y = ny;
+    // BUG FIX: Restore ladder tile when leaving a ladder cell.
+    // grid.moveEntity() calls grid.clear() on the source, which sets it to EMPTY.
+    // That permanently destroys any ladder the mummy walked onto.
+    const wasOnLadder = this.grid.isClimbable(this.x, this.y);
+    if (wasOnLadder) {
+      // Manually restore the ladder before the atomic move overwrites it.
+      this.grid.set(this.x, this.y, TILE.LADDER);
+      this.grid.dirtyCells.add(this.grid.idx(this.x, this.y));
+      // Now just update position — destination tile (LADDER or EMPTY) stays as-is,
+      // enemy is tracked by coordinates only, not written to the grid.
+      this.x = nx;
+      this.y = ny;
+    } else {
+      this.grid.moveEntity(this.x, this.y, nx, ny);
+      this.x = nx;
+      this.y = ny;
+    }
   }
 
   kill() {

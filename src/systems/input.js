@@ -56,8 +56,10 @@ const SWIPE_MIN_DIST   = 4;     // PRO FIX: Register tiny swipes
 const SWIPE_MAX_TIME   = 700;   
 const DOUBLE_TAP_MS    = 280;   
 const TAP_MAX_DIST     = 12;    
-const COOLDOWN_FAST    = 40;    // PRO FIX: Allow faster successive moves
-const COOLDOWN_SLOW    = 100;   // PRO FIX: Must be LOWER than PLAYER_MOVE_INTERVAL_MS (120ms)
+const COOLDOWN_FAST    = 40;    // Allow faster successive moves on flicks
+const COOLDOWN_SLOW    = 125;   // MUST be >= PLAYER_MOVE_INTERVAL_MS (120ms) — if lower,
+                                // a queued swipe is consumed before the player move timer
+                                // has elapsed and the move is silently dropped.
 
 const DIR_QUEUE_MAX    = 6;     // entries  — max buffered directions
 const DIR_QUEUE_TTL    = 400;   // ms       — discard entries older than this
