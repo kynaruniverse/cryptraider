@@ -31,10 +31,11 @@ export class GameSession {
 
     // Per-level state
     this.timeLeft     = CONFIG.LEVEL_TIME;
-    this.crystalsTotal    = 0;
+    this.crystalsTotal     = 0;
+    this.crystalsCollected = 0;
     this.crystalsDeposited = 0;
-    this.portalOpen   = false;
-    this.state        = STATE.BOOT;
+    this.portalOpen        = false;
+    this.state             = STATE.BOOT;
 
     // Visual effects queue
     this.effects = []; // [{type, x, y, frame, maxFrame}]
@@ -42,6 +43,7 @@ export class GameSession {
     // UPGRADE 1: Undo system — persists across level retries.
     this.undo = new UndoManager();
 
+    // Reserved for future cross-level systems (analytics, meta progression)
     this._bindPersistentEvents();
   }
 
@@ -80,7 +82,7 @@ export class GameSession {
     this._bindLevelEvents();
 
     this.state = STATE.PLAYING;
-    this.audio.startBGM();
+    this.audio?.startBGM?.();
   }
 
   // ── Main update tick ──────────────────────────────────────
@@ -96,7 +98,7 @@ export class GameSession {
     }
 
     // Player: Pass the InputSystem instance so it can poll only when ready
-    this.player.update(dt, this.input);
+    this.player.update(dt, this.input); // TEMP: legacy direct input (controller migration pending)
 
     // Physics
     this.physics.update(dt);
@@ -106,7 +108,8 @@ export class GameSession {
 
     // Effects decay — rebuild array only when an effect has expired.
     let effectsChanged = false;
-    for (const fx of this.effects) {
+    for (let i = 0; i < this.effects.length; i++) {
+      const fx = this.effects[i];
       fx.frame++;
       if (fx.frame >= fx.maxFrame) effectsChanged = true;
     }
@@ -171,7 +174,7 @@ export class GameSession {
     if (this.state !== STATE.PLAYING) return;
     if (!this.player.placeDynamite()) return;
 
-    this.audio.placeBomb();
+    this.audio?.placeBomb?.();
 
     // Dynamite position is captured at the moment of placement and stored
     // on the session — NOT written to the grid cell the player stands on.
@@ -186,7 +189,7 @@ export class GameSession {
     this.grid.dirtyCells.add(this.grid.idx(bombX, bombY));
 
     const activeLevel = this.currentLevel;
-    this.physics._defer(() => {
+    this.physics?._defer?.(() => {
       if (this.state === STATE.PLAYING && this.currentLevel === activeLevel && this.physics) {
         // Clear the visual marker before exploding so explosion rendering is clean.
         if (this.grid.get(bombX, bombY) === TILE.DYNAMITE) {
@@ -194,7 +197,7 @@ export class GameSession {
           this.grid.dirtyCells.add(this.grid.idx(bombX, bombY));
         }
         this.physics.explode(bombX, bombY, 2);
-        this.audio.explosion();
+        this.audio?.explosion?.();
       }
     }, 1500);
   }
@@ -207,11 +210,11 @@ export class GameSession {
     };
 
     on('tile_dug',      ({ x, y }) => {
-      this.audio.dig();
+      this.audio?.dig?.();
       // UPGRADE 2: Juice particles on dig
       this.spawnJuiceParticles(x, y, 'dig');
     });
-    on('boulder_pushed',() => this.audio.boulder());
+    on('boulder_pushed',() => this.audio?.boulder?.());
 
     on('item_collected', ({ type, points, x, y }) => {
       this.score += points;
@@ -219,11 +222,11 @@ export class GameSession {
       // UPGRADE 2: Juice particles on collect
       if (x !== undefined) this.spawnJuiceParticles(x, y, 'collect');
       if (type === TILE.CRYSTAL) {
-        this.audio.collectCrystal();
+        this.audio?.collectCrystal?.();
         // Increment collected count — deposit check happens at the machine.
         this.crystalsCollected++;
       } else {
-        this.audio.collect();
+        this.audio?.collect?.();
       }
     });
 
@@ -236,6 +239,7 @@ export class GameSession {
       this._machinesDirtyInterval = setInterval(() => {
         if (this.state !== STATE.PLAYING || !this.grid) {
           clearInterval(this._machinesDirtyInterval);
+          this._machinesDirtyInterval = null;
           return;
         }
         this.grid.findAll(TILE.MACHINE).forEach(({ x, y }) => {
@@ -249,19 +253,19 @@ export class GameSession {
     });
 
     on('player_hit', ({ energy }) => {
-      this.audio.playerHit();
+      this.audio?.playerHit?.();
       if (energy <= 0) this._loseLife();
     });
 
     on('player_crushed', () => {
       if (this.state !== STATE.PLAYING) return;
-      this.audio.playerDie();
+      this.audio?.playerDie?.();
       this._loseLife();
     });
 
     on('player_fall_death', () => {
       if (this.state !== STATE.PLAYING) return;
-      this.audio.playerDie();
+      this.audio?.playerDie?.();
       this._loseLife();
     });
 
@@ -275,7 +279,7 @@ export class GameSession {
 
     on('enemy_killed', ({ points }) => {
       this.score += points || SCORE.ENEMY;
-      this.audio.enemyDie();
+      this.audio?.enemyDie?.();
       this._checkHighScore();
     });
 
@@ -283,7 +287,7 @@ export class GameSession {
       this.enemies.killAt(x, y);
       this.score += SCORE.ENEMY;
       this._checkHighScore();
-      this.audio.enemyDie();
+      this.audio?.enemyDie?.();
       // UPGRADE 2: Juice particles on enemy crush
       this.spawnJuiceParticles(x, y, 'crush');
     });
@@ -298,7 +302,7 @@ export class GameSession {
 
     on('object_fell', ({ from, to, type }) => {
       if (type === TILE.BOULDER) {
-        this.audio.boulder();
+        this.audio?.boulder?.();
         // UPGRADE 2: Thud shake when boulder lands on solid ground
         const below = this.grid ? this.grid.get(to.x, to.y + 1) : 0;
         if (below && below !== 0 /* TILE.EMPTY */) {
@@ -338,7 +342,7 @@ export class GameSession {
     this.portalOpen = true;
 
     // Transform portal tiles → PORTAL_OPEN so the renderer shows active sprite.
-    const portals = this.grid.findAll(TILE.PORTAL);
+    const portals = this.grid?.findAll?.(TILE.PORTAL) || [];
     portals.forEach(({ x, y }) => {
       this.grid.set(x, y, TILE.PORTAL_OPEN);
       this.grid.setMeta(x, y, { active: true, animFrame: 0 });
@@ -346,7 +350,7 @@ export class GameSession {
 
     // Mark machines dirty so the renderer repaints them as active/charged.
     // setMeta already adds to dirtyCells; also force-add the cell index.
-    const machines = this.grid.findAll(TILE.MACHINE);
+    const machines = this.grid?.findAll?.(TILE.MACHINE) || [];
     machines.forEach(({ x, y }) => {
       this.grid.setMeta(x, y, { active: true, charged: true });
       // grid.setMeta already marks dirty — but also force-add animated cell
@@ -354,7 +358,7 @@ export class GameSession {
       this.grid.dirtyCells.add(this.grid.idx(x, y));
     });
 
-    this.audio.portalOpen();
+    this.audio?.portalOpen?.();
     this.events.emit('portal_opened', { level: this.currentLevel });
   }
 
@@ -369,8 +373,8 @@ export class GameSession {
     this.score += bonus;
     this._checkHighScore();
 
-    this.audio.stopBGM();
-    this.audio.levelComplete();
+    this.audio?.stopBGM?.();
+    this.audio?.levelComplete?.();
     this.events.emit('level_won', {
       level: this.currentLevel,
       score: this.score,
@@ -382,7 +386,7 @@ export class GameSession {
   _loseLife() {
     if (this.state !== STATE.PLAYING) return;
     this.lives--;
-    this.audio.stopBGM();
+    this.audio?.stopBGM?.();
 
     if (this.lives <= 0) {
       this.state = STATE.GAME_OVER;
@@ -443,7 +447,7 @@ export class GameSession {
     // Null all level-scoped objects so the GC can collect them immediately.
     // physics._pending may hold deferred closures that reference the old grid —
     // clearing it here prevents stale cross-level explosions.
-    if (this.physics) this.physics.destroy();
+    if (this.physics?.destroy) this.physics.destroy();
     this.grid    = null;
     this.physics = null;
     this.player  = null;
