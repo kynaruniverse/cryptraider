@@ -1,0 +1,26 @@
+body {
+  margin: 0;
+  background: #0b0f18;
+  color: white;
+  font-family: sans-serif;
+}
+
+#toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px;
+}
+
+button {
+  padding: 8px 10px;
+  background: #1a2233;
+  border: 1px solid #2c3a55;
+  color: white;
+}
+
+canvas {
+  display: block;
+  margin: 10px;
+  background: #111;
+}

@@ -1,90 +1,275 @@
-// ============================================================
-// CRYPT RAIDER — Main Entry (Controller-Driven Architecture)
-// Single responsibility: boot, loop, render
-// ============================================================
+import { Input } from "./engine/input.js";
+import { TouchInput } from "./engine/touchInput.js";
+import { Renderer } from "./engine/renderer.js";
+import { UI } from "./ui/ui.js";
+import { GameState } from "./game/state.js";
+import { Player } from "./game/player.js";
+import { World } from "./game/world.js";
+import { loadLevelFile } from "./game/levelLoader.js";
+import { HorrorSystem } from "./game/horror.js";
+import { AudioSystem } from "./engine/audio.js";
 
-import { loadAllSprites } from './assets/sprites.js';
-import { EventBus }       from './engine/eventBus.js';
-import { GameSession }    from './engine/gameSession.js';
-import { GameController } from './engine/GameController.js';
-import { Renderer }       from './ui/renderer.js';
-import { InputSystem }    from './systems/input.js';
-import { AudioSystem }    from './systems/audio.js';
-import { TILE_SIZE, COLS, ROWS, HUD_OFFSET } from './engine/constants.js';
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-// ── Canvas ────────────────────────────────────────────────
-const canvas = document.getElementById('gameCanvas');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-function resizeCanvas(renderer) {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+// -------------------------
+// CORE SYSTEMS
+// -------------------------
+const input = new Input();
+const touch = new TouchInput(canvas);
+const renderer = new Renderer(canvas, ctx);
+const horror = new HorrorSystem();
+const audio = new AudioSystem();
+audio.startAmbience();
 
-  const logicalW = TILE_SIZE * COLS;
-  const logicalH = (TILE_SIZE * ROWS) + HUD_OFFSET;
+window.GameAudio = audio;
+// -------------------------
+// CAMERA + JUICE SYSTEM
+// -------------------------
+let camera = { x: 0, y: 0 };
+let shake = 0;
 
-  const scale = Math.min(vw / logicalW, vh / logicalH);
-
-  canvas.width  = logicalW;
-  canvas.height = logicalH;
-
-  canvas.style.width  = `${Math.floor(logicalW * scale)}px`;
-  canvas.style.height = `${Math.floor(logicalH * scale)}px`;
-  canvas.style.left   = `${Math.floor((vw - canvas.width * scale) / 2)}px`;
-  canvas.style.top    = `${Math.floor((vh - canvas.height * scale) / 2)}px`;
-  canvas.style.position = 'absolute';
-
-  renderer?.updateLayout?.();
+function addShake(amount) {
+  shake = Math.min(shake + amount, 10);
 }
 
-window.addEventListener('resize', () => resizeCanvas(renderer));
+// -------------------------
+// GAME STATE
+// -------------------------
+let gameState = GameState.MENU;
 
-if (screen?.orientation?.lock) {
-  screen.orientation.lock('portrait').catch(() => {});
+let currentLevelIndex = 1;
+let world;
+let player;
+
+// -------------------------
+// UI
+// -------------------------
+const ui = new UI(startGame, openLevelSelect);
+ui.setState(GameState.MENU);
+function showLevelIntro(levelName) {
+  ui.showLevelIntro(levelName);
+}
+// -------------------------
+// LEVEL LOADING
+// -------------------------
+async function loadLevel(index) {
+  const level = await loadLevelFile(`assets/levels/level${index}.json`);
+
+  world = new World(level.grid, level.puzzleData);
+  player = new Player(level.playerStart.x, level.playerStart.y);
+
+  // 🎬 LEVEL INTRO CARD
+  ui.showLevelIntro(level.name || `Level ${index}`);
 }
 
-// ── Boot ──────────────────────────────────────────────────
-let renderer, controller, lastTime = 0;
+// -------------------------
+// START INITIAL LOAD
+// -------------------------
+loadLevel(currentLevelIndex);
 
-async function boot() {
-  const events  = new EventBus();
-  const audio   = new AudioSystem();
-  const input   = new InputSystem(canvas);
-  const sprites = await loadAllSprites();
+// -------------------------
+// MOBILE BUTTONS (SAFE BIND)
+// -------------------------
+function bindControls() {
+  const controls = document.querySelectorAll("#controls button");
 
-  renderer = new Renderer(canvas, sprites);
+  controls.forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (!player || gameState !== GameState.PLAYING) return;
 
-  const session = new GameSession(events, audio, input);
-  session.codeInput = '';
+      const dir = btn.dataset.dir;
 
-  controller = new GameController({
-    session,
-    audio,
-    input,
-    events
+      if (!player || gameState !== GameState.PLAYING) return;
+
+      if (dir === "up") player.move(0, -1, world, nextLevel);
+      if (dir === "down") player.move(0, 1, world, nextLevel);
+      if (dir === "left") player.move(-1, 0, world, nextLevel);
+      if (dir === "right") player.move(1, 0, world, nextLevel);
+
+      addShake(1.2);
+      audio.play("footstep", 0.6);
+    });
   });
-
-  resizeCanvas(renderer);
-
-  canvas.addEventListener('pointerdown', () => audio.startBGM(), { once: true });
-
-  requestAnimationFrame(loop);
 }
 
-// ── Loop ──────────────────────────────────────────────────
-function loop(ts) {
-  const dt = Math.min(ts - lastTime, 50);
-  lastTime = ts;
+bindControls();
 
-  controller.update(dt);
+// -------------------------
+// LEVEL FLOW
+// -------------------------
+async function nextLevel() {
+  currentLevelIndex++;
 
-  renderer.render(
-    controller.getState(),
-    controller.session,
-    controller.input
+  try {
+    await loadLevel(currentLevelIndex);
+  } catch (e) {
+    winGame();
+  }
+}
+
+function restartLevel() {
+  loadLevel(currentLevelIndex);
+}
+
+// -------------------------
+// GAME FLOW
+// -------------------------
+async function startGame() {
+  gameState = GameState.PLAYING;
+  ui.setState(GameState.PLAYING);
+
+  currentLevelIndex = 1;
+  await loadLevel(currentLevelIndex);
+}
+
+function openLevelSelect() {
+  startGame();
+}
+
+function winGame() {
+  gameState = GameState.WIN;
+
+  ui.setState(GameState.WIN);
+
+  // soft fade-in effect
+  ui.targetFade = 0;
+}
+
+// -------------------------
+// UPDATE LOOP
+// -------------------------
+function update() {
+  if (gameState !== GameState.PLAYING) return;
+
+  const swipe = touch.consumeSwipe();
+
+  // CAMERA FOLLOW (SMOOTH)
+  if (player) {
+    camera.x += ((player.renderX * 32) - camera.x) * 0.08;
+    camera.y += ((player.renderY * 32) - camera.y) * 0.08;
+  }
+
+  // SWIPE INPUT
+  if (swipe.dx !== 0 || swipe.dy !== 0) {
+    player.move(swipe.dx, swipe.dy, world, nextLevel);
+    addShake(1.5);
+    audio.play("footstep", 0.6);
+  }
+
+  // HORROR SYSTEM
+  horror.update(player, world);
+  audio.setAmbienceIntensity(horror.intensity);
+  // KEY INPUT
+  if (input.isDown("r")) restartLevel();
+
+  if (input.isDown("ArrowUp")) {
+    player.move(0, -1, world, nextLevel);
+    addShake(1.2);
+    audio.play("footstep", 0.6);
+  }
+
+  if (input.isDown("ArrowDown")) {
+    player.move(0, 1, world, nextLevel);
+    addShake(1.2);
+    audio.play("footstep", 0.6);
+  }
+
+  if (input.isDown("ArrowLeft")) {
+    player.move(-1, 0, world, nextLevel);
+    addShake(1.2);
+    audio.play("footstep", 0.6);
+  }
+
+if (input.isDown("ArrowRight")) {
+  player.move(1, 0, world, nextLevel);
+  addShake(1.2);
+  audio.play("footstep", 0.6);
+}
+
+  if (player) player.update();
+
+  // decay shake
+  shake *= 0.85;
+  // optional safety (prevents undefined crashes)
+  if (!window.GameAudio) window.GameAudio = audio;
+}
+
+// -------------------------
+// DRAW LOOP
+// -------------------------
+function draw() {
+  renderer.clear();
+
+  ctx.save();
+
+  // CAMERA + SHAKE COMBINED
+  const shakeX = (Math.random() - 0.5) * shake;
+  const shakeY = (Math.random() - 0.5) * shake;
+
+  ctx.translate(
+    -camera.x + canvas.width / 2 - 16 + shakeX,
+    -camera.y + canvas.height / 2 - 16 + shakeY
   );
 
+  // -------------------------
+  // TILE RENDER
+  // -------------------------
+  if (world) {
+    for (let y = 0; y < world.grid.length; y++) {
+      for (let x = 0; x < world.grid[y].length; x++) {
+
+        let tile = world.grid[y][x];
+        let color = "#111";
+
+        if (Math.random() < horror.intensity * 0.01) {
+          color = "#1f2a3a";
+        }
+
+        if (tile === 1) color = "#2b2f3a";
+        if (tile === 0) color = "#141822";
+        if (tile === 3) color = "#c08a3a";
+        if (tile === 4) color = "#3af0a0";
+
+        if (tile === 6) color = "#7a5cff";
+        if (tile === 7) color = "#3a3a4a";
+        if (tile === 8) color = "#2cff9a";
+
+        renderer.drawTile(x, y, color);
+      }
+    }
+  }
+
+  // -------------------------
+  // PLAYER RENDER
+  // -------------------------
+  if (player) {
+    const jitter = horror.intensity * 2;
+
+    ctx.fillStyle = "#e6e6e6";
+    ctx.fillRect(
+      player.renderX * 32 + jitter,
+      player.renderY * 32 + jitter,
+      32,
+      32
+    );
+  }
+
+  ctx.restore();
+}
+
+// -------------------------
+// MAIN LOOP
+// -------------------------
+function loop() {
+  update();
+  ui.update();
+  draw();
+  ui.draw(ctx, canvas);
   requestAnimationFrame(loop);
 }
 
-// ── Start ─────────────────────────────────────────────────
-boot();
+loop();

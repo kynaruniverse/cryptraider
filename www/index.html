@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Crypt Raider: Reborn</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<!-- MENU -->
+<div id="menuScreen" class="overlay">
+  <h1>CRYPT RAIDER: REBORN</h1>
+  <button id="startBtn">Start Simulation</button>
+  <button id="levelBtn">Level Select</button>
+</div>
+
+<!-- WIN -->
+<div id="winScreen" class="overlay" style="display:none;">
+  <h1>Memory Restored</h1>
+  <button onclick="location.reload()">Return</button>
+</div>
+
+<div id="controls">
+  <button data-dir="up">↑</button>
+  <div>
+    <button data-dir="left">←</button>
+    <button data-dir="down">↓</button>
+    <button data-dir="right">→</button>
+  </div>
+</div>
+
+<script src="../src/main.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,84 @@
+body {
+  margin: 0;
+  background: #05060a;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  image-rendering: pixelated;
+}
+
+#controls {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+}
+
+#controls button {
+  width: 60px;
+  height: 60px;
+  font-size: 20px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: white;
+  border-radius: 10px;
+}
+
+#controls div {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5,6,10,0.95);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  font-family: sans-serif;
+  z-index: 100;
+}
+
+.overlay h1 {
+  margin-bottom: 20px;
+  letter-spacing: 2px;
+}
+
+.overlay button {
+  margin: 8px;
+  padding: 12px 20px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: white;
+  border-radius: 10px;
+}
+
+#menuScreen, #winScreen {
+  transition: opacity 0.5s ease;
+}
+
+#menuScreen h1 {
+  letter-spacing: 3px;
+  text-shadow: 0 0 10px rgba(255,255,255,0.2);
+}
+
+#winScreen h1 {
+  animation: pulse 1.5s infinite alternate;
+}
+
+@keyframes pulse {
+  from { transform: scale(1); opacity: 0.8; }
+  to { transform: scale(1.05); opacity: 1; }
+}

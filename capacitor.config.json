@@ -1,0 +1,6 @@
+{
+  "appId": "com.yourname.cryptraider",
+  "appName": "Crypt Raider Reborn",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}
