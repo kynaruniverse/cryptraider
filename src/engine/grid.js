@@ -13,39 +13,6 @@
 
 import { TILE, COLS, ROWS } from './constants.js';
 
-// Bitwise flags for ultra-fast property checking
-const FLAG = {
-  SOLID:    1 << 0,
-  DIGGABLE: 1 << 1,
-  PASSABLE: 1 << 2,
-  GRAVITY:  1 << 3,
-  COLLECT:  1 << 4,
-  DANGEROUS:1 << 5,
-  CLIMBABLE:1 << 6,  // tile is a ladder — player can be on it without falling
-};
-
-// Optimization: Property Lookup Table (O(1) access)
-const TILE_PROPS = new Uint8Array(256);
-const define = (tile, flags) => TILE_PROPS[tile] = flags;
-
-define(TILE.STONE,    FLAG.SOLID);
-define(TILE.BOULDER,  FLAG.SOLID | FLAG.GRAVITY);
-define(TILE.GRAVEL,   FLAG.SOLID | FLAG.GRAVITY);
-define(TILE.DIRT,     FLAG.DIGGABLE);
-define(TILE.SAND,     FLAG.DIGGABLE | FLAG.PASSABLE);
-define(TILE.EMPTY,    FLAG.PASSABLE);
-define(TILE.LADDER,   FLAG.PASSABLE | FLAG.CLIMBABLE);
-define(TILE.CRYSTAL,  FLAG.GRAVITY | FLAG.COLLECT);
-define(TILE.GEM,      FLAG.GRAVITY | FLAG.COLLECT);
-define(TILE.DYNAMITE, FLAG.GRAVITY | FLAG.DANGEROUS);
-define(TILE.ENEMY_M,  FLAG.DANGEROUS);
-define(TILE.ENEMY_F,  FLAG.DANGEROUS);
-define(TILE.KEY,         FLAG.COLLECT);
-define(TILE.DOOR,        FLAG.SOLID); 
-define(TILE.PORTAL,      FLAG.PASSABLE);
-define(TILE.PORTAL_OPEN, FLAG.PASSABLE); // Ensure portal remains passable when open
-define(TILE.MACHINE,     FLAG.SOLID);
-define(TILE.EXPLOSION,   FLAG.DANGEROUS); // Explosions should kill entities
 
 // ── DirtyField ─────────────────────────────────────────────
 // Wraps a Uint8Array(size) with a Set-compatible API so all existing
@@ -162,20 +129,6 @@ export class Grid {
     this.dirtyCells.add(i);
   }
 
-
-  // ── Bitmask Query System (AAA Performance) ────────────────
-  // These replace multiple if/else chains with a single bitwise &
-  check(x, y, flag)      { return (TILE_PROPS[this.get(x, y)] & flag) !== 0; }
-  
-  isSolid(x, y)          { return this.check(x, y, FLAG.SOLID); }
-  isDiggable(x, y)       { return this.check(x, y, FLAG.DIGGABLE); }
-  isPassable(x, y)       { return this.check(x, y, FLAG.PASSABLE); }
-  isGravityAffected(x, y){ return this.check(x, y, FLAG.GRAVITY); }
-  isDangerous(x, y)      { return this.check(x, y, FLAG.DANGEROUS); }
-  isClimbable(x, y)      { return this.check(x, y, FLAG.CLIMBABLE); }
-
-  // ── Advanced Spatial Logic ────────────────────────────────
-  
   /** Moves an entity and its metadata atomically */
   moveEntity(fx, fy, tx, ty) {
     const type    = this.get(fx, fy);
@@ -183,15 +136,6 @@ export class Grid {
     // Shallow-clone only when there is meta to clone; otherwise start fresh.
     const meta    = srcMeta ? { ...srcMeta } : {};
     
-    // Auto-detect vertical movement
-    if (ty > fy) {
-      meta.falling = true;
-      meta.fallAnim = (meta.fallAnim || 0); 
-    } else {
-      meta.falling = false;
-      meta.fallAnim = 0;
-    }
-
     // Atomic Swap
     this.clear(fx, fy); 
     this.set(tx, ty, type);

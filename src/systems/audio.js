@@ -1,25 +1,55 @@
 // ============================================================
-// CRYPT RAIDER — Audio System
-// Synthesised sounds via Web Audio API — zero external files
+// CRYPT RAIDER — Audio System (ECS EVENT-DRIVEN)
 // ============================================================
 
 export class AudioSystem {
-  constructor() {
-    this._ctx       = null;
-    this._enabled   = true;
-    this._master    = null;
-    this._bgNode    = null;
-    this._bgGain    = null;
-    this._bgActive  = false;
+  constructor(eventBus) {
+    this.events = eventBus;
+
+    this._ctx = null;
+    this._enabled = true;
+    this._master = null;
+
+    this._bgGain = null;
+    this._bgActive = false;
     this._bgNoteIdx = 0;
-    this._bgTimer   = null;
+    this._bgTimer = null;
+
     this._noiseBuffer = null;
     this._noiseCtxRef = null;
+
+    this._bindEvents();
   }
+
+  // ============================================================
+  // ECS EVENT BINDING
+  // ============================================================
+
+  _bindEvents() {
+    const e = this.events;
+
+    e.on?.('audio:dig', () => this.dig());
+    e.on?.('audio:collect', () => this.collect());
+    e.on?.('audio:crystal', () => this.collectCrystal());
+    e.on?.('audio:boulder', () => this.boulder());
+    e.on?.('audio:explosion', () => this.explosion());
+    e.on?.('audio:player_hit', () => this.playerHit());
+    e.on?.('audio:player_die', () => this.playerDie());
+    e.on?.('audio:enemy_die', () => this.enemyDie());
+    e.on?.('audio:portal_open', () => this.portalOpen());
+    e.on?.('audio:level_complete', () => this.levelComplete());
+    e.on?.('audio:place_bomb', () => this.placeBomb());
+    e.on?.('audio:menu_select', () => this.menuSelect());
+    e.on?.('audio:menu_move', () => this.menuMove());
+  }
+
+  // ============================================================
+  // AUDIO CORE
+  // ============================================================
 
   _getCtx() {
     if (!this._ctx) {
-      this._ctx    = new (window.AudioContext || window.webkitAudioContext)();
+      this._ctx = new (window.AudioContext || window.webkitAudioContext)();
       this._master = this._ctx.createGain();
       this._master.gain.value = 0.6;
       this._master.connect(this._ctx.destination);
@@ -27,75 +57,92 @@ export class AudioSystem {
     return this._ctx;
   }
 
-  setEnabled(v) { this._enabled = v; }
+  setEnabled(v) {
+    this._enabled = v;
+  }
 
-  /** Unlocks the AudioContext after a user gesture. Safe to call repeatedly. */
   unlock() {
     const ctx = this._getCtx();
     if (ctx.state === 'suspended') ctx.resume();
   }
 
-  // ── Generic tone helper ────────────────────────────────────
+  // ============================================================
+  // CORE SOUND HELPERS
+  // ============================================================
+
   _tone(freq, type = 'square', duration = 0.1, vol = 0.3, delay = 0) {
     if (!this._enabled) return;
-    const ctx  = this._getCtx();
-    
-    // Android Resume Guard: If context is suspended, sounds won't play.
+
+    const ctx = this._getCtx();
     if (ctx.state === 'suspended') ctx.resume();
 
-    const osc  = ctx.createOscillator();
+    const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type      = type;
+
+    osc.type = type;
     osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+
     gain.gain.setValueAtTime(vol, ctx.currentTime + delay);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
+    gain.gain.exponentialRampToValueAtTime(
+      0.001,
+      ctx.currentTime + delay + duration
+    );
+
     osc.connect(gain);
     gain.connect(this._master);
+
     osc.start(ctx.currentTime + delay);
     osc.stop(ctx.currentTime + delay + duration);
   }
 
-  // Pre-allocated 0.5 s of white noise — reused by all _noise() calls to avoid GC spikes.
-  _ensureNoiseBuffer() {
-    const ctx = this._getCtx();
-    // Regenerate only when the AudioContext instance changes (e.g. after suspend/resume).
-    if (this._noiseBuffer && this._noiseCtxRef === ctx) return this._noiseBuffer;
-    const size   = Math.ceil(ctx.sampleRate * 0.5);
-    const buffer = ctx.createBuffer(1, size, ctx.sampleRate);
-    const data   = buffer.getChannelData(0);
-    for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
-    this._noiseCtxRef = ctx; // store reference separately — don't mutate native objects
-    this._noiseBuffer = buffer;
-    return buffer;
-  }
-
+  // noise system unchanged (already optimized)
   _noise(duration = 0.15, vol = 0.2) {
     if (!this._enabled) return;
-    const ctx    = this._getCtx();
+
+    const ctx = this._getCtx();
     if (ctx.state === 'suspended') ctx.resume();
-    const buffer = this._ensureNoiseBuffer();
-    const src    = ctx.createBufferSource();
-    const gain   = ctx.createGain();
-    src.buffer = buffer;
-    src.loop   = true; // loop the shared buffer; stopped by gain envelope
+
+    if (!this._noiseBuffer || this._noiseCtxRef !== ctx) {
+      const size = Math.ceil(ctx.sampleRate * 0.5);
+      const buffer = ctx.createBuffer(1, size, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
+      this._noiseBuffer = buffer;
+      this._noiseCtxRef = ctx;
+    }
+
+    const src = ctx.createBufferSource();
+    const gain = ctx.createGain();
+
+    src.buffer = this._noiseBuffer;
+    src.loop = true;
+
     gain.gain.setValueAtTime(vol, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    gain.gain.exponentialRampToValueAtTime(
+      0.001,
+      ctx.currentTime + duration
+    );
+
     src.connect(gain);
     gain.connect(this._master);
+
     src.start();
     src.stop(ctx.currentTime + duration);
   }
 
-  // ── Named sound effects ────────────────────────────────────
+  // ============================================================
+  // GAME SOUND EFFECTS (PURE SIGNAL RESPONSES)
+  // ============================================================
+
   dig() {
     this._noise(0.08, 0.15);
     this._tone(180, 'triangle', 0.06, 0.1);
   }
 
   collect() {
-    this._tone(660,  'sine', 0.08, 0.25);
-    this._tone(880,  'sine', 0.08, 0.2,  0.08);
-    this._tone(1100, 'sine', 0.1,  0.18, 0.16);
+    this._tone(660, 'sine', 0.08, 0.25);
+    this._tone(880, 'sine', 0.08, 0.2, 0.08);
+    this._tone(1100, 'sine', 0.1, 0.18, 0.16);
   }
 
   collectCrystal() {
@@ -110,19 +157,13 @@ export class AudioSystem {
   }
 
   explosion() {
-    // Add a deep bass impact
-    this._tone(45, 'sine', 0.6, 0.5); 
+    this._tone(45, 'sine', 0.6, 0.5);
     this._noise(0.5, 0.4);
-    this._tone(60,  'sawtooth', 0.4, 0.3, 0.02);
-    // Add "debris" scatter sound
-    for(let i=0; i<3; i++) {
-      this._tone(Math.random()*200 + 100, 'square', 0.1, 0.1, 0.1 + Math.random()*0.2);
-    }
+    this._tone(60, 'sawtooth', 0.4, 0.3, 0.02);
   }
 
   playerHit() {
     this._tone(200, 'sawtooth', 0.15, 0.4);
-    this._tone(150, 'sawtooth', 0.15, 0.3, 0.1);
   }
 
   playerDie() {
@@ -144,85 +185,12 @@ export class AudioSystem {
 
   levelComplete() {
     const melody = [523, 659, 784, 1047];
-    melody.forEach((f, i) => this._tone(f, 'sine', 0.25, 0.4, i * 0.18));
+    melody.forEach((f, i) =>
+      this._tone(f, 'sine', 0.25, 0.4, i * 0.18)
+    );
   }
 
   menuSelect() { this._tone(440, 'sine', 0.06, 0.2); }
   menuMove()   { this._tone(330, 'sine', 0.04, 0.15); }
   placeBomb()  { this._tone(200, 'square', 0.08, 0.2); }
-  
-  codeSuccess() {
-    this._tone(523.25, 'sine', 0.1, 0.3);
-    this._tone(659.25, 'sine', 0.15, 0.3, 0.1);
-  }
-
-  codeFail() {
-    this._tone(110, 'sawtooth', 0.2, 0.3);
-    this._tone(90,  'sawtooth', 0.3, 0.2, 0.1);
-  }
-  
-  // ── Background music — simple arpeggiated loop ─────────────
-  startBGM() {
-    if (!this._enabled) return;
-    const ctx = this._getCtx();
-    if (ctx.state === 'suspended') ctx.resume();
-    if (this._bgActive) return;
-    
-    this._bgActive = true;
-    this._bgNoteIdx = 0;
-    
-    if (!this._bgGain) {
-      this._bgGain = ctx.createGain();
-      this._bgGain.gain.value = 0.08;
-      this._bgGain.connect(this._master);
-    }
-
-    this._playBgmStep();
-  }
-
-  _playBgmStep() {
-    if (!this._bgActive || !this._enabled) return;
-    
-    const ctx = this._getCtx();
-    // Use the scheduler's next note time for rock-solid rhythm
-    const now = ctx.currentTime;
-    
-    const notes = [110, 130.81, 146.83, 110, 123.47, 164.81, 110, 146.83]; // Adjusted to a "darker" minor key
-    const BPM = 120; // Slightly slower for a more atmospheric feel
-    const stepTime = 60 / BPM / 2; // Eighth notes
-
-    const osc  = ctx.createOscillator();
-    const gain = ctx.createGain();
-    
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(notes[this._bgNoteIdx % notes.length], now);
-    
-    gain.gain.setValueAtTime(0.4, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + stepTime * 0.9);
-    
-    osc.connect(gain);
-    gain.connect(this._bgGain);
-    
-    osc.start(now);
-    osc.stop(now + stepTime);
-    
-    this._bgNoteIdx++;
-
-    // Schedule next step against AudioContext clock to prevent drift under JS timer throttle.
-    const delayMs = Math.max(0, (now + stepTime - ctx.currentTime) * 1000 - 8);
-    this._bgTimer = setTimeout(() => this._playBgmStep(), delayMs);
-  }
-
-
-  stopBGM() {
-    this._bgActive = false;
-    if (this._bgTimer) {
-      clearTimeout(this._bgTimer);
-      this._bgTimer = null;
-    }
-    // We keep the bgGain connected but silent or disconnected to prevent popping
-    if (this._bgGain) {
-      this._bgGain.gain.setTargetAtTime(0, this._getCtx().currentTime, 0.03);
-    }
-  }
 }
