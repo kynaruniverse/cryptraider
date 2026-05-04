@@ -266,6 +266,14 @@ function _bindSessionEvents() {
   events.on('level_failed', () => { uiState = STATE.LEVEL_FAIL; });
   events.on('game_over',    () => { uiState = STATE.GAME_OVER;  });
   events.on('game_won',     () => { uiState = STATE.GAME_WIN;   });
+
+  // UPGRADE 1: Undo feedback
+  events.on('undo_performed', () => {
+    if (renderer) {
+      renderer.triggerUndoFlash();
+      renderer.triggerShake(3, 80);
+    }
+  });
   
   // Feedback sounds
   events.on('collect',      () => audio.collect());
@@ -278,6 +286,16 @@ function _bindInputToUI() {
   _keydownHandler = (e) => {
     if (e.code === 'Enter') _handleConfirm();
     if (e.code === 'Escape') input.triggerAction('pause');
+
+    // UPGRADE 1: Undo on U key
+    if ((e.code === 'KeyU') && uiState === STATE.PLAYING && session) {
+      e.preventDefault();
+      if (session.performUndo()) {
+        renderer.triggerUndoFlash();
+        renderer.triggerShake(3, 80); // subtle tactile bump
+      }
+      return;
+    }
 
     if (uiState === STATE.CODE_ENTRY && session) {
       const code = session.codeInput || '';

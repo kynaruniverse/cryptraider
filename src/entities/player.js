@@ -6,9 +6,10 @@
 import { TILE, DIR, PLAYER_MOVE_INTERVAL_MS, CONFIG, SCORE } from '../engine/constants.js';
 
 export class Player {
-  constructor(grid, eventBus) {
-    this.grid   = grid;
-    this.events = eventBus;
+  constructor(grid, eventBus, session = null) {
+    this.grid    = grid;
+    this.events  = eventBus;
+    this._session = session; // UPGRADE 1: weak ref for captureSnapshot calls
     this.reset();
   }
 
@@ -53,6 +54,9 @@ export class Player {
     // ── Normal input ──
     const inputDir = inputSystem.pollDir();
     if (!inputDir || (inputDir.x === 0 && inputDir.y === 0)) return;
+
+    // UPGRADE 1: Capture state before the player acts so it can be undone.
+    if (this._session) this._session.captureSnapshot();
 
     const nx = this.x + inputDir.x;
     const ny = this.y + inputDir.y;

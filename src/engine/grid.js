@@ -2,6 +2,14 @@
 // CRYPT RAIDER — AAA Spatial Grid Engine
 // Optimized for memory locality, fast queries, and delta tracking
 // ============================================================
+// UPGRADE 4: dirtyCells is now a Uint8Array bit-field (0|1).
+//   • Zero allocation per dirty-mark (no Set object growth/shrink).
+//   • O(n) scan in clearDirty() is cache-hot — sequential Uint8Array read.
+//   • fill(0) reset is a single typed-array memset — far cheaper than
+//     Set.clear() which must hash-drain all entries.
+//   • External code calling .add(i) / .has(i) / for-of / .clear() still
+//     works unchanged via the DirtyField compatibility shim below.
+// ============================================================
 
 import { TILE, COLS, ROWS } from './constants.js';
 
@@ -39,6 +47,66 @@ define(TILE.PORTAL_OPEN, FLAG.PASSABLE); // Ensure portal remains passable when 
 define(TILE.MACHINE,     FLAG.SOLID);
 define(TILE.EXPLOSION,   FLAG.DANGEROUS); // Explosions should kill entities
 
+// ── DirtyField ─────────────────────────────────────────────
+// Wraps a Uint8Array(size) with a Set-compatible API so all existing
+// call sites (.add / .has / for-of / .clear / .fill) work unchanged
+// while gaining the GC and cache advantages of a typed array.
+class DirtyField {
+  constructor(size) {
+    this._buf   = new Uint8Array(size);
+    this._dirty = []; // index list rebuilt lazily for for-of iteration
+    this._stale = false;
+  }
+
+  get size() {
+    // Bit-count — only used in renderer cache invalidation (rare path).
+    let n = 0;
+    for (let i = 0; i < this._buf.length; i++) if (this._buf[i]) n++;
+    return n;
+  }
+
+  /** Zero-allocation hot-path dirty mark. */
+  add(i) {
+    if (i >= 0 && i < this._buf.length && !this._buf[i]) {
+      this._buf[i] = 1;
+      this._stale  = true;
+    }
+  }
+
+  has(i) { return i >= 0 && i < this._buf.length && this._buf[i] !== 0; }
+
+  /** Reset all dirty bits — single memset, no per-entry work. */
+  clear() { this._buf.fill(0); this._dirty.length = 0; this._stale = false; }
+
+  /** fill(0) alias used by UndoManager restore path. */
+  fill(v) {
+    this._buf.fill(v ? 1 : 0);
+    if (!v) { this._dirty.length = 0; this._stale = false; }
+    else     { this._stale = true; }
+  }
+
+  _rebuild() {
+    this._dirty.length = 0;
+    for (let i = 0; i < this._buf.length; i++) {
+      if (this._buf[i]) this._dirty.push(i);
+    }
+    this._stale = false;
+  }
+
+  /** for-of iteration: rebuilds index list only when stale (amortised). */
+  [Symbol.iterator]() {
+    if (this._stale) this._rebuild();
+    let idx = 0;
+    const arr = this._dirty;
+    return {
+      next() {
+        if (idx < arr.length) return { value: arr[idx++], done: false };
+        return { value: undefined, done: true };
+      }
+    };
+  }
+}
+
 export class Grid {
   constructor(cols = COLS, rows = ROWS) {
     this.cols = cols;
@@ -49,8 +117,8 @@ export class Grid {
     // null sentinel — avoids allocating a live object for every empty cell.
     this.meta  = new Array(size).fill(null);
     
-    // AAA Feature: Dirty tracking for rendering optimization
-    this.dirtyCells = new Set();
+    // UPGRADE 4: Uint8Array-backed dirty field — zero GC allocation per mark.
+    this.dirtyCells = new DirtyField(size);
     this.fullClearRequested = true;
   }
 
@@ -180,7 +248,8 @@ export class Grid {
   // ── State Management ──────────────────────────────────────
   
   clearDirty() {
-    this.dirtyCells.clear();
+    // UPGRADE 4: fill(0) is a single memset — no per-entry hash drain.
+    this.dirtyCells.fill(0);
     this.fullClearRequested = false;
     for (let i = 0; i < this.meta.length; i++) {
       if (this.meta[i]?.falling) this.dirtyCells.add(i);
@@ -226,10 +295,11 @@ export class Grid {
     this.rows = level.height || 17;
     const size = this.cols * this.rows;
 
-    // Use standard Array if Uint8Array causes ID mismatch, 
-    // and ensure we handle the 'map' property correctly
-    const mapData = level.map || level; 
-    
+    // UPGRADE 4: Resize DirtyField to match the new grid dimensions.
+    this.dirtyCells = new DirtyField(size);
+
+    const mapData = level.map || level;
+
     this.cells = new Uint8Array(size);
     this.meta  = new Array(size).fill(null);
     
@@ -240,7 +310,7 @@ export class Grid {
     }
     
     this.fullClearRequested = true;
-    this.dirtyCells.clear();
+    this.dirtyCells.fill(0);
     this._allCellsCache = null; // invalidate cached full-cell set on level load
     // console.log only in explicit debug builds — not in production.
     if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {

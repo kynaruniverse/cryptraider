@@ -715,10 +715,206 @@ stoneFrame([
   D,D,D,D,D,X,P,D,D,  // second mummy col5, portal col6 row14
 ], 'The Final Trial'),
 
+// ─────────────────────────────────────────────────────────
+//  HAND-CRAFTED LEVELS 16-23 — Design Expansion Pack
+//  Inner grid: 9 cols × 15 rows via stoneFrame()
+//  Each level has parSteps (optimal move count) + difficulty (1-5)
+// ─────────────────────────────────────────────────────────
+
+// ── Level 16 — The Gauntlet ──────────────────────────────
+// Design trope: Sequential boulder gauntlet. Four boulders sit on
+// stone ledges above empty shafts. Each MUST fall before the player
+// passes that row. Crystals sit to the right of each drop zone.
+// parSteps: 32  difficulty: 3
+// Strategy: move one row right to trigger drop, grab crystal, repeat.
+Object.assign(stoneFrame([
+  D,D,D,D,D,D,D,D,D,
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,S,B,_,C,S,D,D,  // boulder on ledge; crystal to the right
+  D,D,D,D,_,D,D,D,D,  // empty shaft — boulder lands here
+  D,D,S,B,_,C,S,D,D,
+  D,D,D,D,_,D,D,D,D,
+  D,D,S,B,_,C,S,D,D,
+  D,D,D,D,_,D,D,D,D,
+  D,D,S,B,_,C,S,D,D,
+  D,D,D,D,_,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,X,D,D,D,D,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,D,P,D,D,D,
+], 'The Gauntlet'), { parSteps: 32, difficulty: 3 }),
+
+// ── Level 17 — The Squeeze ───────────────────────────────
+// Design trope: Horizontal squeeze corridor. Two stone columns force
+// the player into a 1-wide corridor. Boulders on the outer lanes roll
+// if the player opens a path. Crystals live in side pockets only
+// reachable through the squeeze. A fly patrols the open mid-zone.
+// parSteps: 24  difficulty: 3
+Object.assign(stoneFrame([
+  D,D,D,D,D,D,D,D,D,
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,B,D,S,D,S,D,B,D,  // boulders outer columns
+  D,_,D,S,D,S,D,_,D,  // drop gaps either side of stone walls
+  D,D,C,S,D,S,C,D,D,  // crystals in side pockets behind stone
+  D,D,D,_,D,_,D,D,D,  // single-cell gaps through walls
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,F,D,D,D,D,  // fly patrols open mid
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,C,D,D,D,D,  // bonus crystal at base
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,X,D,D,D,D,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,D,P,D,D,D,
+], 'The Squeeze'), { parSteps: 24, difficulty: 3 }),
+
+// ── Level 18 — Domino Effect ─────────────────────────────
+// Design trope: Diagonal cascade chain. Boulders sit on a staircase
+// of stone ledges. Removing one cell at the top cascades all boulders
+// through their shafts in sequence. Player must be clear of the zone.
+// Two flies add pressure while the player lines up the chain.
+// parSteps: 28  difficulty: 4
+Object.assign(stoneFrame([
+  D,D,D,D,D,D,D,D,D,
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  B,D,D,D,D,D,D,D,D,  // top boulder — dig below to start chain
+  S,D,D,D,D,D,D,D,D,
+  _,B,D,D,D,D,D,D,D,  // second boulder on next ledge
+  D,S,D,D,D,D,D,D,D,
+  D,_,B,D,D,D,D,D,D,  // third
+  D,D,S,D,D,D,D,D,D,
+  D,D,_,C,D,D,D,D,D,  // crystal at cascade landing
+  D,D,D,D,D,D,D,D,D,
+  D,F,D,D,D,F,D,D,D,  // two flies
+  D,D,D,X,D,D,D,D,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,C,D,P,D,D,
+], 'Domino Effect'), { parSteps: 28, difficulty: 4 }),
+
+// ── Level 19 — The Air Raid ──────────────────────────────
+// Design trope: Three flies in the open arena, zero cover.
+// One crystal is in the kill zone; second is behind a stone wall.
+// Speed and spatial prediction win this level — no mummies.
+// parSteps: 20  difficulty: 4
+Object.assign(stoneFrame([
+  D,D,D,D,D,D,D,D,D,
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,F,D,D,D,D,D,F,D,  // two flies flanking
+  D,D,D,D,C,D,D,D,D,  // crystal dead centre
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,S,S,C,S,S,D,D,  // second crystal sealed — dig left or right
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,F,D,D,D,D,D,  // third fly, lower
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,D,P,D,D,D,
+], 'The Air Raid'), { parSteps: 20, difficulty: 4 }),
+
+// ── Level 20 — Crossroads ────────────────────────────────
+// Design trope: Two mummies patrol perpendicular intersecting corridors.
+// The crystal sits exactly at the intersection — player must time
+// entry while both mummies are on opposite ends of their routes.
+// Key + door forces the player to take the long way down.
+// parSteps: 30  difficulty: 4
+Object.assign(stoneFrame([
+  D,D,D,D,D,D,D,D,D,
+  D,L,D,D,D,D,D,K,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  S,O,S,S,S,S,S,S,S,  // door left
+  _,A,D,D,D,D,D,D,D,
+  _,A,D,D,D,D,D,D,_,  // horizontal corridor — mummy A patrols
+  _,A,D,D,C,D,D,D,_,  // crystal at intersection
+  _,_,_,_,_,_,_,_,_,  // vertical corridor — mummy B patrols up/down
+  _,D,D,D,_,D,D,D,_,
+  _,D,D,D,_,D,D,D,_,
+  X,D,D,D,X,D,D,D,_,  // mummy A (left), mummy B (col 4)
+  _,D,D,D,_,D,D,D,_,
+  _,_,_,_,M,_,_,_,_,
+  _,_,_,_,_,P,_,_,_,
+], 'Crossroads'), { parSteps: 30, difficulty: 4 }),
+
+// ── Level 21 — Sand Castle ───────────────────────────────
+// Design trope: Full sand floor. Boulders on sand fall the moment
+// the player walks below them (sand is passable). Crystals are
+// placed between the drop zones — safe ONLY if player avoids cols
+// directly under each boulder. Teaches: sand is NOT safe ground.
+// parSteps: 26  difficulty: 3
+Object.assign(stoneFrame([
+  D,D,D,D,D,D,D,D,D,
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,B,D,D,B,D,D,B,D,  // boulders col 1, 4, 7
+  N,N,N,N,N,N,N,N,N,  // full sand row — all boulders fall through
+  D,D,D,D,D,D,D,D,D,
+  D,C,D,D,C,D,D,C,D,  // crystals between drop zones (cols 1/4/7 are deadly)
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,X,D,D,D,D,D,
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,D,P,D,D,D,
+], 'Sand Castle'), { parSteps: 26, difficulty: 3 }),
+
+// ── Level 22 — The Vault ─────────────────────────────────
+// Design trope: All crystals sealed in separate stone rooms.
+// Three dynamites must be used in order. Rooms are staggered
+// so a misplaced bomb wastes it. Mummy guards the last room.
+// parSteps: 45  difficulty: 5
+Object.assign(stoneFrame([
+  D,D,D,D,D,D,D,D,D,
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  D,Z,D,D,D,D,D,D,D,  // dynamite 1 (upper)
+  S,S,S,D,D,D,D,D,D,
+  S,C,S,D,D,D,D,D,D,  // crystal in room 1
+  S,S,S,D,Z,D,D,D,D,  // dynamite 2 (middle)
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,S,S,S,D,D,D,
+  D,D,D,S,C,S,D,D,D,  // crystal in room 2
+  D,D,D,S,S,S,D,Z,D,  // dynamite 3 (right)
+  D,D,D,D,D,D,D,D,D,
+  D,D,D,D,D,S,C,S,D,  // crystal in room 3
+  X,D,D,D,D,S,S,S,D,  // mummy guards room 3
+  D,D,D,D,M,D,D,P,D,
+], 'The Vault'), { parSteps: 45, difficulty: 5 }),
+
+// ── Level 23 — Fly Highway ───────────────────────────────
+// Design trope: Three horizontal fly lanes separated by stone walls.
+// Each lane has a fly patrolling left-right and one crystal.
+// A ladder column on the right moves the player between lanes.
+// Key + door at lane 3 exit forces a dangerous retrieve-and-return.
+// parSteps: 38  difficulty: 5
+Object.assign(stoneFrame([
+  D,D,D,D,D,D,D,D,D,
+  D,L,D,D,D,D,D,D,D,
+  D,D,D,D,D,D,D,D,D,
+  S,S,S,S,S,S,S,S,_,  // lane 1 top wall — gap right for ladder
+  F,D,C,D,D,D,D,D,A,  // fly lane 1 + ladder col 8
+  S,S,S,S,S,S,S,S,_,  // lane 1 bottom / lane 2 top
+  F,D,D,C,D,D,D,D,A,  // fly lane 2
+  S,_,S,S,S,S,S,S,_,  // gap left (col 1) as entry point
+  F,D,D,D,C,D,D,D,A,  // fly lane 3
+  S,S,S,S,S,S,S,O,_,  // door at col 7 — need key to exit lane 3
+  D,D,D,D,D,D,D,A,D,
+  D,D,D,D,D,D,D,D,D,
+  D,K,D,D,D,D,D,D,D,  // key bottom-left — forces a risky detour
+  D,D,D,D,M,D,D,D,D,
+  D,D,D,D,D,P,D,D,D,
+], 'Fly Highway'), { parSteps: 38, difficulty: 5 }),
+
 ];
 
-// Procedural levels start at index 15 (level 16 onward)
-for (let i = 15; i < 100; i++) {
+// Procedural levels start at index 23 (levels 1-23 are hand-crafted) (level 16 onward)
+for (let i = 23; i < 100; i++) {
   const gen = generateLevel(i + 1);
   LEVELS.push(gen);
 }

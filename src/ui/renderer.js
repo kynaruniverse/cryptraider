@@ -40,19 +40,40 @@ export class Renderer {
 
     this._frame       = 0;
     this._shake       = 0;
+    this._shakeDecay  = 0.85;  // UPGRADE 2: configurable decay
+    this._shakeDur    = 0;     // remaining ms for duration-limited shakes
     this._hudOffset = HUD_OFFSET;
     this._menuGlow  = null;
     this._hudGrad   = null;
     this._hudGradW  = 0;
     this._portalPulse = 0;
     this._particles   = [];
+    this._undoFlash   = 0;     // UPGRADE 1: white flash on undo (0..1)
 
     this.updateLayout();
     this._initParticles();
   }
 
+  // ── UPGRADE 2: Robust screen shake ───────────────────────
+  /**
+   * Trigger a screen shake with optional duration clamping.
+   * @param {number} intensity  Max pixel displacement (1-20 recommended)
+   * @param {number} [duration] Duration in ms. If omitted, decays naturally.
+   */
+  triggerShake(intensity, duration = 0) {
+    this._shake    = Math.max(this._shake, intensity); // accumulate, don't reset
+    this._shakeDur = duration > 0 ? duration : 0;
+  }
+
+  /** Legacy alias kept for existing call-sites in physics.js / gameSession.js */
   applyShake(amount = 8) {
-    this._shake = amount;
+    this.triggerShake(amount);
+  }
+
+  // ── UPGRADE 1: Undo flash ─────────────────────────────────
+  /** Call when an undo is performed to flash the screen briefly. */
+  triggerUndoFlash() {
+    this._undoFlash = 1.0;
   }
 
 
@@ -111,10 +132,13 @@ export class Renderer {
     ctx.save();
 
     if (this._shake > 0.1) {
-      const sx = (Math.random() - 0.5) * this._shake;
-      const sy = (Math.random() - 0.5) * this._shake;
+      // UPGRADE 2: Sine-modulated displacement gives a smoother feel than
+      // pure random; still noisy enough to feel physical.
+      const phase = this._frame * 1.3;
+      const sx = Math.sin(phase)       * this._shake * 0.7 + (Math.random() - 0.5) * this._shake * 0.3;
+      const sy = Math.sin(phase + 1.6) * this._shake * 0.7 + (Math.random() - 0.5) * this._shake * 0.3;
       ctx.translate(sx, sy);
-      this._shake *= 0.85;
+      this._shake *= this._shakeDecay;
     }
 
     // Full clear every frame — _renderGrid now blits the pre-baked static background
@@ -146,6 +170,15 @@ export class Renderer {
       session.grid.clearDirty();
     }
     ctx.restore();
+
+    // UPGRADE 1: Undo flash — white overlay drawn AFTER restore (unshaken)
+    if (this._undoFlash > 0.01) {
+      ctx.globalAlpha = this._undoFlash * 0.35;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      ctx.globalAlpha = 1;
+      this._undoFlash *= 0.72; // fast fade
+    }
   }
 
 
@@ -395,15 +428,43 @@ drawFromAtlas(key, x, y, size = T, offsetY = 0) {
   }
 
   // ── Effects ───────────────────────────────────────────────
+
+  // UPGRADE 2: Juice particle colour palette by kind
+  static _JUICE_COLORS = {
+    collect: ['#FFD700', '#FFF176', '#FF8C00', '#FFEC6E'],
+    crush:   ['#FF4444', '#FF8800', '#FFAA44', '#CC2200'],
+    dig:     ['#8B6914', '#C4962A', '#D4A84B', '#7A5C1E'],
+  };
+
   _renderEffects(effects) {
+    const ctx = this.ctx;
+    const hudY = this._hudOffset;
+
     for (const fx of effects) {
+      // ── Explosion sprites ───────────────────────────────
       if (fx.type === 'explosion') {
-        if (fx.frame === 0) this.applyShake(12); // Auto-shake on start
+        if (fx.frame === 0) this.applyShake(12);
         const frame = Math.min(Math.floor(fx.frame), 7);
-        const spriteKey = `explosion_${frame}`;
-        
-        // Render explosion relative to the HUD offset
-        this.drawFromAtlas(spriteKey, fx.x, fx.y, T * 2.5, this._hudOffset - T);
+        this.drawFromAtlas(`explosion_${frame}`, fx.x, fx.y, T * 2.5, hudY - T);
+      }
+
+      // ── UPGRADE 2: Juice particles ─────────────────────
+      if (fx.type === 'juice') {
+        const t        = fx.frame / fx.maxFrame;          // 0→1 progress
+        const alpha    = Math.max(0, 1 - t * t);          // quadratic fade
+        const px       = fx.x * T + T / 2 + fx.vx * fx.frame * T * 0.18;
+        const py       = hudY + fx.y * T + T / 2 + fx.vy * fx.frame * T * 0.18;
+        const radius   = fx.size * (1 - t * 0.5);        // shrink slightly
+
+        const palette  = Renderer._JUICE_COLORS[fx.kind] || Renderer._JUICE_COLORS.collect;
+        const color    = palette[fx.frame % palette.length];
+
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(0.5, radius), 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.globalAlpha = 1;
       }
     }
   }

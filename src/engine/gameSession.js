@@ -9,7 +9,8 @@ import { Physics }     from './physics.js';
 import { Player }      from '../entities/player.js';
 import { EnemyManager }from '../entities/enemies.js';
 import { LEVELS }      from '../levels/levelData.js';
-import { Storage } from './storage.js';
+import { Storage }     from './storage.js';
+import { UndoManager } from './undoManager.js';
 
 export class GameSession {
   constructor(eventBus, audio, input) { // ADDED input here
@@ -38,6 +39,9 @@ export class GameSession {
     // Visual effects queue
     this.effects = []; // [{type, x, y, frame, maxFrame}]
 
+    // UPGRADE 1: Undo system — persists across level retries.
+    this.undo = new UndoManager();
+
     this._bindPersistentEvents();
   }
 
@@ -52,6 +56,9 @@ export class GameSession {
     this.portalOpen        = false;
     this.effects           = [];
 
+    // UPGRADE 1: Fresh undo stack each level.
+    this.undo.clear();
+
     // Build grid
     this.grid = new Grid();
     this.grid.loadArray(LEVELS[this.currentLevel]);
@@ -62,8 +69,8 @@ export class GameSession {
     // Physics
     this.physics = new Physics(this.grid, this.events);
 
-    // Player
-    this.player = new Player(this.grid, this.events);
+    // Player — pass session ref so captureSnapshot works (UPGRADE 1)
+    this.player = new Player(this.grid, this.events, this);
 
     // Enemies
     this.enemies = new EnemyManager(this.grid, this.events);
@@ -108,6 +115,57 @@ export class GameSession {
     }
   }
 
+
+  // ── UPGRADE 1: Undo ───────────────────────────────────────
+  /**
+   * Capture the current state BEFORE a player action.
+   * Called by Player._move(), Player._dig(), Player._pushBoulder().
+   */
+  captureSnapshot() {
+    if (this.state !== STATE.PLAYING || !this.player || !this.grid) return;
+    this.undo.snapshot(this.grid, this.player, this);
+  }
+
+  /**
+   * Pop one undo step and restore it.
+   * Bound to "U" key in main.js _bindInputToUI().
+   */
+  performUndo() {
+    if (this.state !== STATE.PLAYING) return false;
+    const ok = this.undo.restore(this.grid, this.player, this);
+    if (ok) {
+      this.state = STATE.PLAYING;
+      this.events.emit('undo_performed');
+    }
+    return ok;
+  }
+
+  // ── UPGRADE 2: Juice particle spawner ────────────────────
+  /**
+   * Push 4-6 "juice" particles into effects for the Renderer to draw.
+   * @param {number} x - Grid column
+   * @param {number} y - Grid row
+   * @param {'collect'|'crush'|'dig'} kind
+   */
+  spawnJuiceParticles(x, y, kind = 'collect') {
+    const count = 4 + Math.floor(Math.random() * 3); // 4-6
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.6;
+      const speed = 0.8 + Math.random() * 1.4;
+      this.effects.push({
+        type:     'juice',
+        kind,
+        x,
+        y,
+        vx:       Math.cos(angle) * speed,
+        vy:       Math.sin(angle) * speed,
+        frame:    0,
+        maxFrame: 18 + Math.floor(Math.random() * 8),
+        size:     3 + Math.random() * 3,
+      });
+    }
+  }
+
   // ── Input: place dynamite ─────────────────────────────────
   placeDynamite() {
     if (this.state !== STATE.PLAYING) return;
@@ -148,12 +206,18 @@ export class GameSession {
       this._unsubs.push(unsub);
     };
 
-    on('tile_dug',      () => this.audio.dig());
+    on('tile_dug',      ({ x, y }) => {
+      this.audio.dig();
+      // UPGRADE 2: Juice particles on dig
+      this.spawnJuiceParticles(x, y, 'dig');
+    });
     on('boulder_pushed',() => this.audio.boulder());
 
-    on('item_collected', ({ type, points }) => {
+    on('item_collected', ({ type, points, x, y }) => {
       this.score += points;
       this._checkHighScore();
+      // UPGRADE 2: Juice particles on collect
+      if (x !== undefined) this.spawnJuiceParticles(x, y, 'collect');
       if (type === TILE.CRYSTAL) {
         this.audio.collectCrystal();
         // Increment collected count — deposit check happens at the machine.
@@ -220,6 +284,8 @@ export class GameSession {
       this.score += SCORE.ENEMY;
       this._checkHighScore();
       this.audio.enemyDie();
+      // UPGRADE 2: Juice particles on enemy crush
+      this.spawnJuiceParticles(x, y, 'crush');
     });
 
     on('enemy_touched_player', () => {
@@ -230,8 +296,15 @@ export class GameSession {
       this.effects.push({ type: 'explosion', x, y, radius, frame: 0, maxFrame: 8 });
     });
 
-    on('object_fell', ({ to, type }) => {
-      if (type === TILE.BOULDER) this.audio.boulder();
+    on('object_fell', ({ from, to, type }) => {
+      if (type === TILE.BOULDER) {
+        this.audio.boulder();
+        // UPGRADE 2: Thud shake when boulder lands on solid ground
+        const below = this.grid ? this.grid.get(to.x, to.y + 1) : 0;
+        if (below && below !== 0 /* TILE.EMPTY */) {
+          if (this.physics) this.physics.shake(4); // small thud
+        }
+      }
     });
 
     // BUG FIX: A crystal destroyed by a boulder or explosion must reduce
